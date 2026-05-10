@@ -31,6 +31,7 @@ export default async function Image() {
         >
           <div
             style={{
+              display: "flex",
               fontSize: "44px",
               fontWeight: 700,
               letterSpacing: "-1.5px",
@@ -41,6 +42,7 @@ export default async function Image() {
           </div>
           <div
             style={{
+              display: "flex",
               fontSize: "18px",
               fontWeight: 500,
               padding: "6px 14px",
@@ -55,6 +57,8 @@ export default async function Image() {
 
         <div
           style={{
+            display: "flex",
+            flexDirection: "column",
             fontSize: "76px",
             fontWeight: 700,
             lineHeight: 1.15,
@@ -63,13 +67,13 @@ export default async function Image() {
             marginBottom: "28px",
           }}
         >
-          세무 쟁점,
-          <br />
-          법령 근거로 즉시 확인
+          <div style={{ display: "flex" }}>세무 쟁점,</div>
+          <div style={{ display: "flex" }}>법령 근거로 즉시 확인</div>
         </div>
 
         <div
           style={{
+            display: "flex",
             fontSize: "26px",
             fontWeight: 300,
             color: "#94a3b8",
