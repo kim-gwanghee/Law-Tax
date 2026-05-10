@@ -114,4 +114,35 @@ body {
   .lawtax-username {
     display: none;
   }
+  .lawtax-hero {
+    padding: 40px 16px 32px !important;
+  }
+  .lawtax-hero h2 {
+    font-size: 24px !important;
+    letter-spacing: -0.4px !important;
+  }
+  .lawtax-hero p.lawtax-hero-sub {
+    font-size: 13px !important;
+    margin-bottom: 28px !important;
+  }
+  .lawtax-example {
+    padding: 12px 14px !important;
+  }
+  .lawtax-example span {
+    font-size: 13px !important;
+  }
+  .lawtax-input-bar {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+  .lawtax-input {
+    padding: 10px 12px !important;
+    font-size: 14px !important;
+  }
+  .lawtax-submit {
+    padding: 10px 18px !important;
+  }
+  .lawtax-disclaimer {
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom)) !important;
+    font-size: 11px !important;
+  }
 }

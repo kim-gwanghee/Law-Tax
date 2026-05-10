@@ -636,7 +636,7 @@ export default function Home() {
 
         {messages.length === 0 ? (
           /* Empty state — centered, clean */
-          <div className="flex flex-col items-center justify-center min-h-full px-4 py-16">
+          <div className="lawtax-hero flex flex-col items-center justify-center min-h-full px-4 py-16">
             <div className="w-full max-w-xl">
 
               {/* Eyebrow pill */}
@@ -660,7 +660,7 @@ export default function Home() {
               </h2>
 
               {/* Subtitle */}
-              <p className="text-center mb-10"
+              <p className="lawtax-hero-sub text-center mb-10"
                 style={{ fontSize: "15px", fontWeight: 300, color: C.inkMute, lineHeight: 1.5 }}>
                 공개 법령·판례를 검색하여 결론, 근거 조문, 한계를 정리합니다.
               </p>
@@ -669,7 +669,7 @@ export default function Home() {
               <div className="space-y-3">
                 {EXAMPLE_QUERIES.map((q) => (
                   <button key={q} onClick={() => submit(q)}
-                    className="group w-full text-left flex items-center justify-between gap-4 px-5 py-4 rounded-xl transition-all duration-150"
+                    className="lawtax-example group w-full text-left flex items-center justify-between gap-4 px-5 py-4 rounded-xl transition-all duration-150"
                     style={{
                       background: C.canvas,
                       border: `1px solid ${C.hairline}`,
@@ -838,7 +838,7 @@ export default function Home() {
       </div>
 
       {/* ── Input bar ───────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-4 py-4"
+      <div className="lawtax-input-bar flex-shrink-0 px-4 py-4"
         style={{ background: C.canvas, borderTop: `1px solid ${C.hairline}` }}>
         <div className="max-w-3xl mx-auto flex gap-3 items-center">
           <textarea
@@ -847,7 +847,7 @@ export default function Home() {
             onKeyDown={handleKeyDown}
             placeholder="세무 관련 질문을 입력하세요"
             rows={2}
-            className="flex-1 resize-none rounded-lg px-4 py-3 text-sm transition-colors focus:outline-none"
+            className="lawtax-input flex-1 resize-none rounded-lg px-4 py-3 text-sm transition-colors focus:outline-none"
             style={{
               border: `1px solid ${C.hairlineInput}`,
               background: C.canvas,
@@ -863,7 +863,7 @@ export default function Home() {
           <button
             onClick={() => submit(input)}
             disabled={!input.trim() || loading}
-            className="flex-shrink-0 rounded-full px-6 py-3 text-sm font-normal text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="lawtax-submit flex-shrink-0 rounded-full px-6 py-3 text-sm font-normal text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: C.primary, fontSize: "14px", fontWeight: 400 }}
             onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = C.primaryDeep; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = C.primary; }}>
@@ -873,7 +873,7 @@ export default function Home() {
       </div>
 
       {/* ── Disclaimer ──────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 text-center py-2 px-4"
+      <div className="lawtax-disclaimer flex-shrink-0 text-center py-2 px-4"
         style={{ fontSize: "12px", fontWeight: 300, color: C.inkMute, background: C.canvas }}>
         공개 법령·판례 기반 참고 자료입니다. 최종 판단은 담당 세무사가 합니다.
       </div>
