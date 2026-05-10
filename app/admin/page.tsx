@@ -74,7 +74,9 @@ async function fetchStats(): Promise<{
     admin.from("conversations").select("user_id"),
   ]);
 
-  const totalUsers = usersResult.data?.total ?? 0;
+  const totalUsers = (usersResult.data && "total" in usersResult.data
+    ? (usersResult.data as { total?: number }).total
+    : undefined) ?? 0;
   const totalConversations = conversationsResult.count ?? 0;
   const totalMessages = messagesAllResult.count ?? 0;
   const totalQueries = queriesAllResult.count ?? 0;
