@@ -33,10 +33,37 @@ type TopUser = {
   query_count: number;
 };
 
+type DailyPoint = {
+  date: string;
+  count: number;
+};
+
+function buildDailySeries(
+  isoDates: string[],
+  days: number,
+): DailyPoint[] {
+  const counts = new Map<string, number>();
+  for (const iso of isoDates) {
+    const day = iso.slice(0, 10);
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  const series: DailyPoint[] = [];
+  const today = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    series.push({ date: key, count: counts.get(key) ?? 0 });
+  }
+  return series;
+}
+
 async function fetchStats(): Promise<{
   stats: Stats;
   recent: RecentQuery[];
   topUsers: TopUser[];
+  dailyQueries: DailyPoint[];
+  dailyNewConversations: DailyPoint[];
 }> {
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -119,6 +146,26 @@ async function fetchStats(): Promise<{
     .sort((a, b) => b.query_count - a.query_count)
     .slice(0, 10);
 
+  // Daily series for last 30 days
+  const [queries30dRowsResult, conversations30dRowsResult] = await Promise.all([
+    admin.from("messages")
+      .select("created_at")
+      .eq("role", "user")
+      .gte("created_at", thirtyDaysAgo),
+    admin.from("conversations")
+      .select("created_at")
+      .gte("created_at", thirtyDaysAgo),
+  ]);
+
+  const dailyQueries = buildDailySeries(
+    (queries30dRowsResult.data ?? []).map((r) => r.created_at),
+    30,
+  );
+  const dailyNewConversations = buildDailySeries(
+    (conversations30dRowsResult.data ?? []).map((r) => r.created_at),
+    30,
+  );
+
   return {
     stats: {
       totalUsers,
@@ -133,6 +180,8 @@ async function fetchStats(): Promise<{
     },
     recent,
     topUsers,
+    dailyQueries,
+    dailyNewConversations,
   };
 }
 
@@ -166,7 +215,7 @@ export default async function AdminPage() {
     );
   }
 
-  const { stats, recent, topUsers } = await fetchStats();
+  const { stats, recent, topUsers, dailyQueries, dailyNewConversations } = await fetchStats();
   const totalFeedback = stats.feedbackUp + stats.feedbackDown;
   const feedbackRate = totalFeedback > 0
     ? Math.round((stats.feedbackUp / totalFeedback) * 100)
@@ -196,6 +245,15 @@ export default async function AdminPage() {
         <StatCard label="최근 7일 질문" value={stats.queriesLast7d.toLocaleString()} />
         <StatCard label="최근 30일 질문" value={stats.queriesLast30d.toLocaleString()} />
         <StatCard label="총 대화 세션" value={stats.totalConversations.toLocaleString()} />
+      </section>
+
+      {/* Daily charts */}
+      <section style={{ marginBottom: "32px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>최근 30일 추이</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+          <ChartCard title="일별 질문 수" series={dailyQueries} accent="var(--c-primary)" />
+          <ChartCard title="일별 신규 대화" series={dailyNewConversations} accent="var(--c-primary-deep)" />
+        </div>
       </section>
 
       {/* Feedback */}
@@ -287,6 +345,55 @@ export default async function AdminPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function ChartCard({ title, series, accent }: { title: string; series: DailyPoint[]; accent: string }) {
+  const max = Math.max(1, ...series.map((p) => p.count));
+  const total = series.reduce((sum, p) => sum + p.count, 0);
+  const width = 320;
+  const height = 120;
+  const barWidth = width / series.length;
+
+  return (
+    <div style={{
+      padding: "18px 20px",
+      borderRadius: "10px",
+      border: "1px solid var(--c-hairline)",
+      background: "var(--c-canvas-soft)",
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "12px" }}>
+        <div style={{ fontSize: "12px", color: "var(--c-ink-mute)" }}>{title}</div>
+        <div style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "-0.2px" }}>
+          {total.toLocaleString()}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
+        {series.map((p, i) => {
+          const h = (p.count / max) * (height - 4);
+          const x = i * barWidth;
+          const y = height - h;
+          return (
+            <rect
+              key={p.date}
+              x={x + 1}
+              y={y}
+              width={Math.max(barWidth - 2, 1)}
+              height={h}
+              fill={accent}
+              opacity={p.count === 0 ? 0.15 : 0.85}
+              rx="1"
+            >
+              <title>{`${p.date}: ${p.count}건`}</title>
+            </rect>
+          );
+        })}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "10px", color: "var(--c-ink-mute)" }}>
+        <span>{series[0]?.date.slice(5)}</span>
+        <span>{series[series.length - 1]?.date.slice(5)}</span>
+      </div>
+    </div>
   );
 }
 
