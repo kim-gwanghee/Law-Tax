@@ -27,9 +27,18 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/login");
   const isAuthCallback = pathname.startsWith("/auth/callback");
   const isApiRoute = pathname.startsWith("/api");
+  // 메타데이터 라우트는 크롤러용이라 비로그인 상태로 접근 가능해야 함
+  const isPublicMetadata =
+    pathname === "/opengraph-image" ||
+    pathname === "/twitter-image" ||
+    pathname === "/icon" ||
+    pathname === "/apple-icon" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/manifest.webmanifest";
 
   // 비로그인 + 보호 경로 → 로그인 페이지로
-  if (!user && !isAuthPage && !isAuthCallback && !isApiRoute) {
+  if (!user && !isAuthPage && !isAuthCallback && !isApiRoute && !isPublicMetadata) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
