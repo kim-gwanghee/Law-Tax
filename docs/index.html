@@ -289,8 +289,8 @@
 <body>
   <script>
     (function(){
-      var s=localStorage.getItem('theme'),d=s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches);
-      if(d)document.documentElement.classList.add('dark');
+      var s=localStorage.getItem('theme');
+      if(s!=='light')document.documentElement.classList.add('dark');
     })();
   </script>
 

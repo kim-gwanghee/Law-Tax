@@ -21,8 +21,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className={`${inter.variable} h-full antialiased`}>
       <head>
-        {/* Runs before first paint — adds "dark" class if needed to prevent flash */}
-        <script dangerouslySetInnerHTML={{ __html: `(function(){var s=localStorage.getItem('theme'),d=s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.classList.add('dark')})()` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var s=localStorage.getItem('theme');if(s!=='light')document.documentElement.classList.add('dark')})()` }} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

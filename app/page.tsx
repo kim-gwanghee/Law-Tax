@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import UserMenu from "./components/UserMenu";
 
 // ─── Design tokens — CSS variable references (values live in globals.css) ─
 const C = {
@@ -365,11 +366,10 @@ export default function Home() {
   const [isDark, setIsDark] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Initialise theme from localStorage / system preference
+  // Initialise theme — dark by default unless explicitly set to light
   useEffect(() => {
     const saved = localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const dark = saved === "dark" || (!saved && prefersDark);
+    const dark = saved !== "light";
     setIsDark(dark);
     document.documentElement.classList.toggle("dark", dark);
   }, []);
@@ -542,6 +542,8 @@ export default function Home() {
               }}>
               BETA
             </span>
+            {/* User profile */}
+            <UserMenu />
           </div>
         </div>
       </header>

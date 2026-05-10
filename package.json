@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start -p ${PORT:-3000}"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4",
     "korean-law-mcp": "^4.0.1",
     "next": "^16.2.6",
     "react": "^19.2.6",
