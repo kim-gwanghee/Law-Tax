@@ -38,10 +38,7 @@ type DailyPoint = {
   count: number;
 };
 
-function buildDailySeries(
-  isoDates: string[],
-  days: number,
-): DailyPoint[] {
+function buildDailySeries(isoDates: string[], days: number): DailyPoint[] {
   const counts = new Map<string, number>();
   for (const iso of isoDates) {
     const day = iso.slice(0, 10);
@@ -58,12 +55,64 @@ function buildDailySeries(
   return series;
 }
 
+function startOfWeekMonday(d: Date): Date {
+  const day = d.getUTCDay(); // Sunday=0, Monday=1, ..., Saturday=6
+  const offset = day === 0 ? 6 : day - 1;
+  const monday = new Date(d);
+  monday.setUTCDate(d.getUTCDate() - offset);
+  monday.setUTCHours(0, 0, 0, 0);
+  return monday;
+}
+
+function buildWeeklySeries(isoDates: string[], weeks: number): DailyPoint[] {
+  const counts = new Map<string, number>();
+  for (const iso of isoDates) {
+    const d = new Date(iso);
+    const wkKey = startOfWeekMonday(d).toISOString().slice(0, 10);
+    counts.set(wkKey, (counts.get(wkKey) ?? 0) + 1);
+  }
+  const series: DailyPoint[] = [];
+  const thisWeek = startOfWeekMonday(new Date());
+  for (let i = weeks - 1; i >= 0; i--) {
+    const d = new Date(thisWeek);
+    d.setUTCDate(thisWeek.getUTCDate() - i * 7);
+    const key = d.toISOString().slice(0, 10);
+    series.push({ date: key, count: counts.get(key) ?? 0 });
+  }
+  return series;
+}
+
+function buildMonthlySeries(isoDates: string[], months: number): DailyPoint[] {
+  const counts = new Map<string, number>();
+  for (const iso of isoDates) {
+    const month = iso.slice(0, 7); // YYYY-MM
+    counts.set(month, (counts.get(month) ?? 0) + 1);
+  }
+  const series: DailyPoint[] = [];
+  const today = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(today.getUTCFullYear(), today.getUTCMonth() - i, 1);
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    series.push({ date: key, count: counts.get(key) ?? 0 });
+  }
+  return series;
+}
+
+function buildCumulativeSeries(series: DailyPoint[], baseline = 0): DailyPoint[] {
+  let acc = baseline;
+  return series.map((p) => ({ date: p.date, count: (acc += p.count) }));
+}
+
+type Series = { daily: DailyPoint[]; weekly: DailyPoint[]; monthly: DailyPoint[] };
+
 async function fetchStats(): Promise<{
   stats: Stats;
   recent: RecentQuery[];
   topUsers: TopUser[];
-  dailyQueries: DailyPoint[];
-  dailyNewConversations: DailyPoint[];
+  queries: Series;
+  conversations: Series;
+  signups: Series;
+  cumulativeSignups: DailyPoint[];
 }> {
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -146,25 +195,44 @@ async function fetchStats(): Promise<{
     .sort((a, b) => b.query_count - a.query_count)
     .slice(0, 10);
 
-  // Daily series for last 30 days
-  const [queries30dRowsResult, conversations30dRowsResult] = await Promise.all([
+  // 12개월치 raw 타임스탬프 — 일/주/월 시리즈 각각 생성
+  const twelveMonthsAgo = new Date(now - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [queriesRowsResult, conversationsRowsResult, allUsersResult] = await Promise.all([
     admin.from("messages")
       .select("created_at")
       .eq("role", "user")
-      .gte("created_at", thirtyDaysAgo),
+      .gte("created_at", twelveMonthsAgo),
     admin.from("conversations")
       .select("created_at")
-      .gte("created_at", thirtyDaysAgo),
+      .gte("created_at", twelveMonthsAgo),
+    admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
 
-  const dailyQueries = buildDailySeries(
-    (queries30dRowsResult.data ?? []).map((r) => r.created_at),
-    30,
-  );
-  const dailyNewConversations = buildDailySeries(
-    (conversations30dRowsResult.data ?? []).map((r) => r.created_at),
-    30,
-  );
+  const queryDates = (queriesRowsResult.data ?? []).map((r) => r.created_at);
+  const conversationDates = (conversationsRowsResult.data ?? []).map((r) => r.created_at);
+  const userCreatedAtAll = (allUsersResult.data?.users ?? []).map((u) => u.created_at);
+  const userCreatedAtRecent = userCreatedAtAll.filter((d) => d >= twelveMonthsAgo);
+
+  const queries: Series = {
+    daily: buildDailySeries(queryDates, 30),
+    weekly: buildWeeklySeries(queryDates, 12),
+    monthly: buildMonthlySeries(queryDates, 12),
+  };
+  const conversations: Series = {
+    daily: buildDailySeries(conversationDates, 30),
+    weekly: buildWeeklySeries(conversationDates, 12),
+    monthly: buildMonthlySeries(conversationDates, 12),
+  };
+  const signups: Series = {
+    daily: buildDailySeries(userCreatedAtRecent, 30),
+    weekly: buildWeeklySeries(userCreatedAtRecent, 12),
+    monthly: buildMonthlySeries(userCreatedAtRecent, 12),
+  };
+
+  // 누적 가입자 (월별, baseline = 12개월 이전 누적치)
+  const baseline = userCreatedAtAll.filter((d) => d < twelveMonthsAgo).length;
+  const cumulativeSignups = buildCumulativeSeries(signups.monthly, baseline);
 
   return {
     stats: {
@@ -180,8 +248,10 @@ async function fetchStats(): Promise<{
     },
     recent,
     topUsers,
-    dailyQueries,
-    dailyNewConversations,
+    queries,
+    conversations,
+    signups,
+    cumulativeSignups,
   };
 }
 
@@ -215,7 +285,7 @@ export default async function AdminPage() {
     );
   }
 
-  const { stats, recent, topUsers, dailyQueries, dailyNewConversations } = await fetchStats();
+  const { stats, recent, topUsers, queries, conversations, signups, cumulativeSignups } = await fetchStats();
   const totalFeedback = stats.feedbackUp + stats.feedbackDown;
   const feedbackRate = totalFeedback > 0
     ? Math.round((stats.feedbackUp / totalFeedback) * 100)
@@ -247,13 +317,33 @@ export default async function AdminPage() {
         <StatCard label="총 대화 세션" value={stats.totalConversations.toLocaleString()} />
       </section>
 
-      {/* Daily charts */}
-      <section style={{ marginBottom: "32px" }}>
-        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>최근 30일 추이</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
-          <ChartCard title="일별 질문 수" series={dailyQueries} accent="var(--c-primary)" />
-          <ChartCard title="일별 신규 대화" series={dailyNewConversations} accent="var(--c-primary-deep)" />
+      {/* Trend charts */}
+      <section style={{ marginBottom: "28px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>질문 수</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
+          <ChartCard title="일별 (30일)" series={queries.daily} accent="var(--c-primary)" />
+          <ChartCard title="주별 (12주)" series={queries.weekly} accent="var(--c-primary)" />
+          <ChartCard title="월별 (12개월)" series={queries.monthly} accent="var(--c-primary)" />
         </div>
+      </section>
+
+      <section style={{ marginBottom: "28px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>신규 대화</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
+          <ChartCard title="일별 (30일)" series={conversations.daily} accent="var(--c-primary-deep)" />
+          <ChartCard title="주별 (12주)" series={conversations.weekly} accent="var(--c-primary-deep)" />
+          <ChartCard title="월별 (12개월)" series={conversations.monthly} accent="var(--c-primary-deep)" />
+        </div>
+      </section>
+
+      <section style={{ marginBottom: "32px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>가입자</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+          <ChartCard title="일별 (30일)" series={signups.daily} accent="#22c55e" />
+          <ChartCard title="주별 (12주)" series={signups.weekly} accent="#22c55e" />
+          <ChartCard title="월별 (12개월)" series={signups.monthly} accent="#22c55e" />
+        </div>
+        <ChartCard title="누적 가입자 (월별)" series={cumulativeSignups} accent="#22c55e" cumulative />
       </section>
 
       {/* Feedback */}
@@ -348,9 +438,21 @@ export default async function AdminPage() {
   );
 }
 
-function ChartCard({ title, series, accent }: { title: string; series: DailyPoint[]; accent: string }) {
+function ChartCard({
+  title,
+  series,
+  accent,
+  cumulative = false,
+}: {
+  title: string;
+  series: DailyPoint[];
+  accent: string;
+  cumulative?: boolean;
+}) {
   const max = Math.max(1, ...series.map((p) => p.count));
-  const total = series.reduce((sum, p) => sum + p.count, 0);
+  const total = cumulative
+    ? (series[series.length - 1]?.count ?? 0)
+    : series.reduce((sum, p) => sum + p.count, 0);
   const width = 320;
   const height = 120;
   const barWidth = width / series.length;
