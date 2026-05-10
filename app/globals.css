@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/* ── Light mode tokens ──────────────────────────────────────────────── */
+:root {
+  --c-primary:        #1a56db;
+  --c-primary-deep:   #1647c0;
+  --c-primary-press:  #1239a0;
+  --c-primary-subtle: #dbeafe;
+  --c-ink:            #111111;
+  --c-ink2:           #111111;
+  --c-ink-mute:       #64748d;
+  --c-canvas:         #ffffff;
+  --c-canvas-soft:    #f8fafc;
+  --c-hairline:       #e3e8ee;
+  --c-hairline-input: #a8c3de;
+  --shadow-1: 0 1px 3px rgba(0,55,112,0.08);
+  --shadow-2: 0 8px 24px rgba(0,55,112,0.08), 0 2px 6px rgba(0,55,112,0.04);
+}
+
+/* ── Dark mode tokens ───────────────────────────────────────────────── */
+html.dark {
+  --c-primary:        #60a5fa;
+  --c-primary-deep:   #3b82f6;
+  --c-primary-press:  #2563eb;
+  --c-primary-subtle: rgba(96,165,250,0.12);
+  --c-ink:            #f1f5f9;
+  --c-ink2:           #e2e8f0;
+  --c-ink-mute:       #94a3b8;
+  --c-canvas:         #0f172a;
+  --c-canvas-soft:    #1e293b;
+  --c-hairline:       #334155;
+  --c-hairline-input: #475569;
+  --shadow-1: 0 1px 4px rgba(0,0,0,0.4);
+  --shadow-2: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.25);
+}
+
+@theme inline {
+  --color-background: var(--c-canvas);
+  --color-foreground: var(--c-ink);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--c-canvas);
+  color: var(--c-ink);
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 300;
+  font-feature-settings: "ss01";
+}
+
+.tnum {
+  font-feature-settings: "tnum";
+  letter-spacing: -0.42px;
+}
