@@ -52,3 +52,66 @@ body {
   font-feature-settings: "tnum";
   letter-spacing: -0.42px;
 }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.lawtax-sidebar {
+  flex-shrink: 0;
+  background: var(--c-canvas-soft);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease, transform 0.2s ease;
+}
+.lawtax-sidebar-inner {
+  width: 260px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.lawtax-backdrop {
+  display: none;
+}
+
+/* Desktop: collapsible width */
+@media (min-width: 768px) {
+  .lawtax-sidebar {
+    width: 0;
+    border-right: none;
+  }
+  .lawtax-sidebar[data-open="true"] {
+    width: 260px;
+    border-right: 1px solid var(--c-hairline);
+  }
+}
+
+/* Mobile: overlay */
+@media (max-width: 767px) {
+  .lawtax-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    width: 260px;
+    z-index: 50;
+    border-right: 1px solid var(--c-hairline);
+    transform: translateX(-100%);
+  }
+  .lawtax-sidebar[data-open="true"] {
+    transform: translateX(0);
+  }
+  .lawtax-backdrop[data-open="true"] {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 40;
+  }
+}
+
+/* Hide subtitle and username on mobile to prevent header overflow */
+@media (max-width: 640px) {
+  .lawtax-subtitle,
+  .lawtax-username {
+    display: none;
+  }
+}

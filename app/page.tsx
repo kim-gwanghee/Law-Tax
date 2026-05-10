@@ -368,7 +368,7 @@ export default function Home() {
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [lawPane, setLawPane] = useState<{ law: string; article: string } | null>(null);
   const [isDark, setIsDark] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -402,6 +402,10 @@ export default function Home() {
     const dark = saved !== "light";
     setIsDark(dark);
     document.documentElement.classList.toggle("dark", dark);
+    // Sidebar open by default on desktop, closed on mobile
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      setSidebarOpen(true);
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -563,6 +567,7 @@ export default function Home() {
         currentId={currentConvoId}
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
+        onClose={() => setSidebarOpen(false)}
         refreshKey={sidebarRefresh}
       />
 
@@ -587,7 +592,7 @@ export default function Home() {
               <span style={{ fontSize: "15px", fontWeight: 400, letterSpacing: "-0.2px", color: C.ink }}>
                 LawTax
               </span>
-              <span className="ml-2" style={{ fontSize: "13px", fontWeight: 300, color: C.inkMute }}>
+              <span className="lawtax-subtitle ml-2" style={{ fontSize: "13px", fontWeight: 300, color: C.inkMute }}>
                 세무사 전용 법령·판례 검색
               </span>
             </div>

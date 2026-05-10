@@ -69,7 +69,7 @@ export default function UserMenu() {
             {profile.nickname[0] ?? "?"}
           </div>
         )}
-        <span style={{ fontSize: "13px", fontWeight: 400, color: "var(--c-ink)" }}>
+        <span className="lawtax-username" style={{ fontSize: "13px", fontWeight: 400, color: "var(--c-ink)" }}>
           {profile.nickname}
         </span>
       </button>
