@@ -123,6 +123,16 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* ── Guides link ── */}
+        <a href="/posts" style={{
+          fontSize: "13px",
+          fontWeight: 400,
+          color: "var(--c-primary)",
+          textDecoration: "none",
+        }}>
+          세무사 실무 가이드 보기 →
+        </a>
+
         {/* ── Footer note ── */}
         <p style={{
           fontSize: "11px", fontWeight: 300,

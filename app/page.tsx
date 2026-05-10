@@ -615,6 +615,20 @@ export default function Home() {
                 </svg>
               )}
             </button>
+            {/* Guides link */}
+            <a href="/posts"
+              className="hidden sm:inline-block"
+              style={{
+                fontSize: "13px",
+                fontWeight: 400,
+                color: C.inkMute,
+                textDecoration: "none",
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = C.ink)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = C.inkMute)}>
+              실무 가이드
+            </a>
             {/* BETA pill */}
             <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-[11px] font-normal tracking-wide"
               style={{
