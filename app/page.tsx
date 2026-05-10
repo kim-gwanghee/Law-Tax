@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import UserMenu from "./components/UserMenu";
+import Sidebar from "./components/Sidebar";
+import { createConversation, loadMessages, saveMessage } from "@/lib/conversations";
 
 // ─── Design tokens — CSS variable references (values live in globals.css) ─
 const C = {
@@ -364,7 +366,21 @@ export default function Home() {
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [lawPane, setLawPane] = useState<{ law: string; article: string } | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
+  const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function handleNewConversation() {
+    setCurrentConvoId(null);
+    setMessages([]);
+  }
+
+  async function handleSelectConversation(id: string) {
+    setCurrentConvoId(id);
+    const rows = await loadMessages(id);
+    setMessages(rows.map((r) => ({ role: r.role, content: r.content })));
+  }
 
   // Initialise theme — dark by default unless explicitly set to light
   useEffect(() => {
@@ -399,6 +415,17 @@ export default function Home() {
     setInput("");
     setLoading(true);
     setStreamStatus("생각 중...");
+
+    // 대화 세션 확보 (없으면 생성)
+    let convoId = currentConvoId;
+    if (!convoId) {
+      convoId = await createConversation(query);
+      if (convoId) {
+        setCurrentConvoId(convoId);
+        setSidebarRefresh((n) => n + 1);
+      }
+    }
+    if (convoId) saveMessage(convoId, "user", query);
 
     try {
       const res = await fetch("/api/query", {
@@ -449,6 +476,7 @@ export default function Home() {
                 };
                 return msgs;
               });
+              if (convoId) saveMessage(convoId, "assistant", finalText || "관련 법령·판례를 찾을 수 없습니다.");
               isDone = true;
             } else if (event.type === "error") {
               setMessages((prev) => {
@@ -500,19 +528,41 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: C.canvas, color: C.ink }}>
+    <div className="flex h-screen" style={{ background: C.canvas, color: C.ink }}>
+
+      <Sidebar
+        open={sidebarOpen}
+        currentId={currentConvoId}
+        onSelect={handleSelectConversation}
+        onNew={handleNewConversation}
+        refreshKey={sidebarRefresh}
+      />
+
+      <div className="flex flex-col flex-1 min-w-0">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex-shrink-0 px-6"
         style={{ borderBottom: `1px solid ${C.hairline}`, background: C.canvas }}>
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between">
-          <div>
-            <span style={{ fontSize: "15px", fontWeight: 400, letterSpacing: "-0.2px", color: C.ink }}>
-              LawTax
-            </span>
-            <span className="ml-2" style={{ fontSize: "13px", fontWeight: 300, color: C.inkMute }}>
-              세무사 전용 법령·판례 검색
-            </span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen((v) => !v)} aria-label="사이드바 토글"
+              className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+              style={{ background: C.canvasSoft, color: C.inkMute }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <div>
+              <span style={{ fontSize: "15px", fontWeight: 400, letterSpacing: "-0.2px", color: C.ink }}>
+                LawTax
+              </span>
+              <span className="ml-2" style={{ fontSize: "13px", fontWeight: 300, color: C.inkMute }}>
+                세무사 전용 법령·판례 검색
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Theme toggle */}
@@ -761,6 +811,8 @@ export default function Home() {
       <div className="flex-shrink-0 text-center py-2 px-4"
         style={{ fontSize: "12px", fontWeight: 300, color: C.inkMute, background: C.canvas }}>
         공개 법령·판례 기반 참고 자료입니다. 최종 판단은 담당 세무사가 합니다.
+      </div>
+
       </div>
 
       {/* ── Law article drawer ─────────────────────────────────────────── */}
