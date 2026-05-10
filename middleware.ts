@@ -27,6 +27,7 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/login");
   const isAuthCallback = pathname.startsWith("/auth/callback");
   const isApiRoute = pathname.startsWith("/api");
+  const isPublicContent = pathname.startsWith("/posts");
   // 메타데이터 라우트 + 검색엔진 인증 파일은 크롤러용이라 비로그인 상태로 접근 가능해야 함
   const isPublicMetadata =
     pathname === "/opengraph-image" ||
@@ -40,7 +41,7 @@ export async function middleware(request: NextRequest) {
     (pathname.startsWith("/naver") && pathname.endsWith(".html"));
 
   // 비로그인 + 보호 경로 → 로그인 페이지로
-  if (!user && !isAuthPage && !isAuthCallback && !isApiRoute && !isPublicMetadata) {
+  if (!user && !isAuthPage && !isAuthCallback && !isApiRoute && !isPublicMetadata && !isPublicContent) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

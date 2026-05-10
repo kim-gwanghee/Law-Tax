@@ -108,6 +108,53 @@ body {
   }
 }
 
+/* ── Blog post markdown ──────────────────────────────────────────────── */
+.lawtax-post {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--c-ink);
+}
+.lawtax-post h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  margin: 36px 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--c-hairline);
+}
+.lawtax-post h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 24px 0 10px;
+}
+.lawtax-post p {
+  margin: 0 0 14px;
+}
+.lawtax-post ul, .lawtax-post ol {
+  padding-left: 24px;
+  margin: 0 0 14px;
+}
+.lawtax-post li {
+  margin-bottom: 6px;
+}
+.lawtax-post strong {
+  font-weight: 600;
+}
+.lawtax-post blockquote {
+  margin: 14px 0;
+  padding: 12px 18px;
+  border-left: 3px solid var(--c-primary);
+  background: var(--c-canvas-soft);
+  font-size: 14px;
+  color: var(--c-ink);
+}
+.lawtax-post code {
+  background: var(--c-canvas-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 /* Hide subtitle and username on mobile to prevent header overflow */
 @media (max-width: 640px) {
   .lawtax-subtitle,
