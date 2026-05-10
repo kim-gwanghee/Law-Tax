@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import TrendsPanel from "./TrendsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -317,33 +318,16 @@ export default async function AdminPage() {
         <StatCard label="총 대화 세션" value={stats.totalConversations.toLocaleString()} />
       </section>
 
-      {/* Trend charts */}
+      {/* Unified trends panel */}
       <section style={{ marginBottom: "28px" }}>
-        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>질문 수</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
-          <ChartCard title="일별 (30일)" series={queries.daily} accent="var(--c-primary)" />
-          <ChartCard title="주별 (12주)" series={queries.weekly} accent="var(--c-primary)" />
-          <ChartCard title="월별 (12개월)" series={queries.monthly} accent="var(--c-primary)" />
-        </div>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>추이 분석</h2>
+        <TrendsPanel queries={queries} conversations={conversations} signups={signups} />
       </section>
 
-      <section style={{ marginBottom: "28px" }}>
-        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>신규 대화</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
-          <ChartCard title="일별 (30일)" series={conversations.daily} accent="var(--c-primary-deep)" />
-          <ChartCard title="주별 (12주)" series={conversations.weekly} accent="var(--c-primary-deep)" />
-          <ChartCard title="월별 (12개월)" series={conversations.monthly} accent="var(--c-primary-deep)" />
-        </div>
-      </section>
-
+      {/* Cumulative signups */}
       <section style={{ marginBottom: "32px" }}>
-        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>가입자</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", marginBottom: "12px" }}>
-          <ChartCard title="일별 (30일)" series={signups.daily} accent="#22c55e" />
-          <ChartCard title="주별 (12주)" series={signups.weekly} accent="#22c55e" />
-          <ChartCard title="월별 (12개월)" series={signups.monthly} accent="#22c55e" />
-        </div>
-        <ChartCard title="누적 가입자 (월별)" series={cumulativeSignups} accent="#22c55e" cumulative />
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>누적 가입자</h2>
+        <ChartCard title="월별 누적" series={cumulativeSignups} accent="#22c55e" cumulative />
       </section>
 
       {/* Feedback */}
