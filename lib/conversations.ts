@@ -62,12 +62,51 @@ export async function saveMessage(
   conversationId: string,
   role: "user" | "assistant",
   content: string,
+): Promise<string | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({ conversation_id: conversationId, role, content })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("saveMessage:", error);
+    return null;
+  }
+  return data.id;
+}
+
+export async function saveFeedback(
+  messageId: string,
+  rating: 1 | -1,
+  comment?: string,
+): Promise<boolean> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { error } = await supabase
+    .from("message_feedback")
+    .upsert(
+      { message_id: messageId, user_id: user.id, rating, comment: comment ?? null },
+      { onConflict: "message_id,user_id" },
+    );
+  if (error) {
+    console.error("saveFeedback:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function logEvent(
+  eventType: string,
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase
-    .from("messages")
-    .insert({ conversation_id: conversationId, role, content });
-  if (error) console.error("saveMessage:", error);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase
+    .from("usage_events")
+    .insert({ user_id: user.id, event_type: eventType, metadata: metadata ?? null });
 }
 
 export async function deleteConversation(conversationId: string): Promise<boolean> {

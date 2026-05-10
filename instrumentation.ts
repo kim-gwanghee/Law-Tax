@@ -1,13 +1,28 @@
 export async function register() {
-  const url = process.env.MCP_SERVER_URL ?? "https://korean-law-mcp.fly.dev/mcp";
+  // Sentry initialization for server/edge runtimes
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./sentry.server.config");
+  }
+  if (process.env.NEXT_RUNTIME === "edge") {
+    await import("./sentry.edge.config");
+  }
 
-  const ping = () =>
-    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .catch(() => {});
-
-  // Initial warmup on server start
-  ping();
-
-  // Keep fly.dev alive with pings every 4 minutes (fly.dev sleeps after 5 min idle)
-  setInterval(ping, 4 * 60 * 1000);
+  // Korean Law MCP keep-alive (Node runtime only)
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const url = process.env.MCP_SERVER_URL ?? "https://korean-law-mcp.fly.dev/mcp";
+    const ping = () =>
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .catch(() => {});
+    ping();
+    setInterval(ping, 4 * 60 * 1000);
+  }
 }
+
+export const onRequestError = async (
+  err: unknown,
+  request: Request,
+  context: unknown,
+) => {
+  const Sentry = await import("@sentry/nextjs");
+  Sentry.captureRequestError(err, request, context as Parameters<typeof Sentry.captureRequestError>[2]);
+};

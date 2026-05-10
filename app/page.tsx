@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import UserMenu from "./components/UserMenu";
 import Sidebar from "./components/Sidebar";
-import { createConversation, loadMessages, saveMessage } from "@/lib/conversations";
+import { createConversation, loadMessages, saveMessage, saveFeedback, logEvent } from "@/lib/conversations";
 
 // ─── Design tokens — CSS variable references (values live in globals.css) ─
 const C = {
@@ -25,10 +25,12 @@ const SHADOW_2 = "var(--shadow-2)";
 
 type Citation = { title: string; url?: string };
 type Message = {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
   retryQuery?: string;
+  feedback?: 1 | -1;
 };
 
 const EXAMPLE_QUERIES = [
@@ -379,7 +381,19 @@ export default function Home() {
   async function handleSelectConversation(id: string) {
     setCurrentConvoId(id);
     const rows = await loadMessages(id);
-    setMessages(rows.map((r) => ({ role: r.role, content: r.content })));
+    setMessages(rows.map((r) => ({ id: r.id, role: r.role, content: r.content })));
+  }
+
+  async function handleFeedback(messageIdx: number, rating: 1 | -1) {
+    const target = messages[messageIdx];
+    if (!target?.id) return;
+    setMessages((prev) => {
+      const next = [...prev];
+      next[messageIdx] = { ...next[messageIdx], feedback: rating };
+      return next;
+    });
+    await saveFeedback(target.id, rating);
+    logEvent("feedback_given", { rating, message_id: target.id });
   }
 
   // Initialise theme — dark by default unless explicitly set to light
@@ -476,7 +490,21 @@ export default function Home() {
                 };
                 return msgs;
               });
-              if (convoId) saveMessage(convoId, "assistant", finalText || "관련 법령·판례를 찾을 수 없습니다.");
+              if (convoId) {
+                const finalContent = finalText || "관련 법령·판례를 찾을 수 없습니다.";
+                saveMessage(convoId, "assistant", finalContent).then((id) => {
+                  if (id) {
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      const last = next.length - 1;
+                      if (next[last]?.role === "assistant") {
+                        next[last] = { ...next[last], id };
+                      }
+                      return next;
+                    });
+                  }
+                });
+              }
               isDone = true;
             } else if (event.type === "error") {
               setMessages((prev) => {
@@ -737,6 +765,38 @@ export default function Home() {
                         </button>
                       )}
                     </div>
+
+                    {/* Feedback buttons (only for completed assistant messages with id) */}
+                    {msg.id && !(loading && i === messages.length - 1) && msg.content && !msg.retryQuery && (
+                      <div className="flex items-center gap-1 px-1">
+                        <button onClick={() => handleFeedback(i, 1)} aria-label="도움됨"
+                          className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+                          style={{
+                            background: msg.feedback === 1 ? C.primarySubtle : "transparent",
+                            color: msg.feedback === 1 ? C.primary : C.inkMute,
+                          }}
+                          onMouseEnter={(e) => { if (msg.feedback !== 1) (e.currentTarget as HTMLButtonElement).style.background = C.canvasSoft; }}
+                          onMouseLeave={(e) => { if (msg.feedback !== 1) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M7 10v12"/>
+                            <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7V10l4-7c1.66 0 3 1.34 3 3z"/>
+                          </svg>
+                        </button>
+                        <button onClick={() => handleFeedback(i, -1)} aria-label="도움 안 됨"
+                          className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+                          style={{
+                            background: msg.feedback === -1 ? C.primarySubtle : "transparent",
+                            color: msg.feedback === -1 ? C.primary : C.inkMute,
+                          }}
+                          onMouseEnter={(e) => { if (msg.feedback !== -1) (e.currentTarget as HTMLButtonElement).style.background = C.canvasSoft; }}
+                          onMouseLeave={(e) => { if (msg.feedback !== -1) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 14V2"/>
+                            <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17v12l-4 7c-1.66 0-3-1.34-3-3z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Citations — canvas-soft panel */}
                     {msg.citations && msg.citations.length > 0 && (
