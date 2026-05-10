@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LawTax — 세무 법령 검색 데모</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --c-primary:        #1a56db;
+      --c-primary-deep:   #1647c0;
+      --c-primary-subtle: #dbeafe;
+      --c-ink:            #111111;
+      --c-ink-mute:       #64748d;
+      --c-canvas:         #ffffff;
+      --c-canvas-soft:    #f8fafc;
+      --c-hairline:       #e3e8ee;
+      --c-hairline-input: #a8c3de;
+      --shadow-2: 0 8px 24px rgba(0,55,112,0.08), 0 2px 6px rgba(0,55,112,0.04);
+    }
+    html.dark {
+      --c-primary:        #60a5fa;
+      --c-primary-deep:   #3b82f6;
+      --c-primary-subtle: rgba(96,165,250,0.12);
+      --c-ink:            #f1f5f9;
+      --c-ink-mute:       #94a3b8;
+      --c-canvas:         #0f172a;
+      --c-canvas-soft:    #1e293b;
+      --c-hairline:       #334155;
+      --c-hairline-input: #475569;
+      --shadow-2: 0 8px 24px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.25);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-weight: 300;
+      background: var(--c-canvas);
+      color: var(--c-ink);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--c-hairline);
+      background: var(--c-canvas);
+      padding: 0 24px;
+    }
+    .header-inner {
+      max-width: 896px;
+      margin: 0 auto;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { font-size: 15px; font-weight: 400; letter-spacing: -0.2px; }
+    .logo-sub { font-size: 13px; font-weight: 300; color: var(--c-ink-mute); margin-left: 8px; }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .theme-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--c-hairline);
+      background: var(--c-canvas-soft);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; transition: background 0.15s;
+    }
+    .theme-btn:hover { background: var(--c-hairline); }
+    .beta-tag {
+      font-size: 11px; font-weight: 500; padding: 3px 8px;
+      border-radius: 20px; border: 1px solid var(--c-primary);
+      color: var(--c-primary); letter-spacing: 0.5px;
+    }
+    .demo-notice {
+      font-size: 11px; font-weight: 400; padding: 3px 10px;
+      border-radius: 20px; background: #fef3c7; color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    html.dark .demo-notice { background: rgba(251,191,36,0.15); color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+
+    /* ── Chat area ── */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 24px;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 64px 0 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .badge {
+      font-size: 12px; font-weight: 400; padding: 4px 14px;
+      border-radius: 20px; border: 1px solid var(--c-primary);
+      color: var(--c-primary); margin-bottom: 24px;
+    }
+    .hero-title {
+      font-size: 32px; font-weight: 700; line-height: 1.1;
+      letter-spacing: -0.64px; text-align: center; margin-bottom: 12px;
+    }
+    .hero-sub {
+      font-size: 15px; font-weight: 300; color: var(--c-ink-mute);
+      text-align: center; margin-bottom: 40px;
+    }
+    .examples { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+    .example-btn {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-radius: 12px;
+      border: 1px solid var(--c-hairline); background: var(--c-canvas-soft);
+      cursor: pointer; text-align: left;
+      font-size: 14px; font-weight: 300; color: var(--c-ink);
+      font-family: inherit; transition: border-color 0.15s, background 0.15s;
+    }
+    .example-btn:hover { border-color: var(--c-primary); background: var(--c-canvas); }
+    .example-btn .arrow { color: var(--c-ink-mute); font-size: 16px; flex-shrink: 0; margin-left: 12px; }
+    .example-btn strong { font-weight: 500; }
+
+    /* ── Messages ── */
+    .messages {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 28px 0;
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .user-bubble {
+      align-self: flex-end;
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: 16px 16px 4px 16px;
+      background: var(--c-primary);
+      color: white;
+      font-size: 14px; font-weight: 500; line-height: 1.5;
+    }
+    .ai-card {
+      background: var(--c-canvas-soft);
+      border: 1px solid var(--c-hairline);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    /* ── Status ── */
+    .status-msg {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--c-ink-mute);
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--c-hairline);
+      border-top-color: var(--c-primary);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Response markdown ── */
+    .response-body { font-size: 14px; line-height: 1.75; }
+    .response-body .sec-title {
+      font-size: 14px; font-weight: 700; color: var(--c-ink);
+      margin: 18px 0 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--c-hairline);
+    }
+    .response-body .sec-title:first-child { margin-top: 0; }
+    .response-body p { margin-bottom: 6px; }
+    .response-body ul { padding-left: 20px; margin-bottom: 6px; }
+    .response-body li { margin-bottom: 4px; }
+
+    .law-btn {
+      display: inline-flex; align-items: center; gap: 3px;
+      color: var(--c-primary);
+      background: var(--c-primary-subtle);
+      border: none; cursor: pointer;
+      font-size: 13px; font-weight: 400;
+      padding: 1px 5px; border-radius: 4px;
+      font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    .law-btn:hover { opacity: 0.75; }
+
+    /* ── Citations ── */
+    .citations {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: var(--c-canvas);
+      border: 1px solid var(--c-hairline);
+      border-radius: 8px;
+    }
+    .citations-label {
+      font-size: 11px; font-weight: 500; color: var(--c-ink-mute);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .cite-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; color: var(--c-primary);
+      background: none; border: none; cursor: pointer;
+      font-family: inherit; margin-right: 12px; padding: 0;
+    }
+    .cite-chip:hover { text-decoration: underline; }
+
+    /* ── Input ── */
+    .input-bar {
+      flex-shrink: 0;
+      padding: 16px 24px;
+      background: var(--c-canvas);
+      border-top: 1px solid var(--c-hairline);
+    }
+    .input-inner {
+      max-width: 640px; margin: 0 auto;
+      display: flex; gap: 12px; align-items: center;
+    }
+    textarea {
+      flex: 1; resize: none; border-radius: 10px;
+      border: 1px solid var(--c-hairline-input);
+      background: var(--c-canvas); color: var(--c-ink);
+      font-family: inherit; font-size: 14px; font-weight: 300;
+      padding: 12px 16px; line-height: 1.5; outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--c-primary); }
+    textarea::placeholder { color: var(--c-ink-mute); }
+    .submit-btn {
+      flex-shrink: 0; padding: 12px 24px; border-radius: 24px;
+      border: none; background: var(--c-primary); color: white;
+      font-family: inherit; font-size: 14px; font-weight: 400;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .submit-btn:hover:not(:disabled) { background: var(--c-primary-deep); }
+    .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .disclaimer {
+      text-align: center; padding: 8px 24px;
+      font-size: 12px; font-weight: 300; color: var(--c-ink-mute);
+      background: var(--c-canvas); flex-shrink: 0;
+    }
+
+    /* ── Law drawer ── */
+    .backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 100; display: none;
+    }
+    .backdrop.open { display: block; }
+    .drawer {
+      position: fixed; top: 0; right: 0;
+      width: 440px; max-width: 92vw; height: 100%;
+      background: var(--c-canvas);
+      border-left: 1px solid var(--c-hairline);
+      z-index: 101;
+      transform: translateX(100%);
+      transition: transform 0.25s ease;
+      display: flex; flex-direction: column;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--c-hairline);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    }
+    .drawer-title { font-size: 14px; font-weight: 500; }
+    .drawer-sub { font-size: 12px; color: var(--c-ink-mute); margin-top: 3px; }
+    .drawer-close {
+      background: none; border: none; font-size: 20px;
+      cursor: pointer; color: var(--c-ink-mute); line-height: 1; flex-shrink: 0;
+    }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+    .art-num { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    .art-content { font-size: 13px; line-height: 1.7; color: var(--c-ink); }
+    .art-clause { margin-top: 8px; padding-left: 16px; font-size: 13px; line-height: 1.7; }
+    .demo-chip {
+      display: inline-block; font-size: 10px; font-weight: 500;
+      padding: 2px 6px; border-radius: 4px;
+      background: var(--c-primary-subtle); color: var(--c-primary);
+      margin-left: 6px; vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function(){
+      var s=localStorage.getItem('theme'),d=s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if(d)document.documentElement.classList.add('dark');
+    })();
+  </script>
+
+  <header>
+    <div class="header-inner">
+      <div>
+        <span class="logo">LawTax</span>
+        <span class="logo-sub">세무사 전용 법령·판례 검색</span>
+      </div>
+      <div class="header-right">
+        <span class="demo-notice">DEMO</span>
+        <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
+        <span class="beta-tag">BETA</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="chat-area" id="chatArea">
+    <div class="empty-state" id="emptyState">
+      <span class="badge">세무사 전용</span>
+      <h1 class="hero-title">세무 쟁점, 법령 근거로 즉시 확인</h1>
+      <p class="hero-sub">공개 법령·판례를 검색하여 결론, 근거 조문, 한계를 정리합니다.</p>
+      <div class="examples">
+        <button class="example-btn" onclick="run(0)">
+          <span>네이버페이 결제 <strong>50만원</strong>, 사업 관련 구매인데 영수증 없음 — 경비 처리 가능한가요?</span>
+          <span class="arrow">→</span>
+        </button>
+        <button class="example-btn" onclick="run(1)">
+          <span>프리랜서 디자이너에게 외주비 <strong>300만원</strong> 지급 시 원천징수 의무가 있나요?</span>
+          <span class="arrow">→</span>
+        </button>
+        <button class="example-btn" onclick="run(2)">
+          <span>집에서 일하는 개인사업자의 주거비<strong>(월세)</strong>를 사업 경비로 처리할 수 있나요?</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+  </div>
+
+  <div class="input-bar">
+    <div class="input-inner">
+      <textarea id="inp" rows="2" placeholder="세무 관련 질문을 입력하세요"
+        onkeydown="onKey(event)" oninput="syncBtn()"></textarea>
+      <button class="submit-btn" id="submitBtn" onclick="runFromInput()" disabled>검색</button>
+    </div>
+  </div>
+  <div class="disclaimer">공개 법령·판례 기반 참고 자료입니다. 최종 판단은 담당 세무사가 합니다.</div>
+
+  <div class="backdrop" id="backdrop" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <div>
+        <div class="drawer-title" id="dTitle"></div>
+        <div class="drawer-sub" id="dSub"></div>
+      </div>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="dBody"></div>
+  </div>
+
+  <script>
+  // ── Demo content ─────────────────────────────────────────────────────────
+
+  const QA = [
+    {
+      q: "네이버페이 결제 50만원, 사업 관련 구매인데 영수증 없음 — 경비 처리 가능한가요?",
+      statuses: ["소득세법 검색 중...", "소득세법 제27조 내용 가져오는 중...", "답변 작성 중..."],
+      answer: `## 결론
+
+네이버페이 결제 내역은 전자지급수단 거래내역으로 **적격증빙**에 해당하므로, 별도 종이 영수증 없이도 필요경비 처리가 가능합니다. 단, 해당 지출이 사업과 직접 관련이 있음을 입증할 수 있어야 합니다.
+
+## 근거 법령
+
+**[소득세법 제27조]** — 사업소득의 필요경비는 해당 과세기간의 총수입금액에 대응하는 비용으로서 일반적으로 용인되는 통상적인 것의 합계액으로 합니다. 사업 관련성이 인정되면 경비 처리가 가능합니다.
+
+**[소득세법 시행령 제208조의2]** — 신용카드매출전표, 직불카드영수증, 전자금융거래법에 따른 전자지급수단(네이버페이·카카오페이 등)의 거래내역을 적격증빙으로 규정합니다.
+
+## 유의사항
+
+- 네이버페이 거래내역 출력본을 5년간 보관해야 합니다.
+- 구매 품목과 사업 관련성을 설명할 수 있어야 세무조사 시 인정됩니다.
+- 현금 지출이었다면 현금영수증 없는 건당 3만 원 초과분은 불인정될 수 있습니다.`,
+      citations: ["소득세법 제27조", "소득세법 시행령 제208조의2"]
+    },
+    {
+      q: "프리랜서 디자이너에게 외주비 300만원 지급 시 원천징수 의무가 있나요?",
+      statuses: ["소득세법 검색 중...", "소득세법 제127조 내용 가져오는 중...", "답변 작성 중..."],
+      answer: `## 결론
+
+프리랜서 디자이너에게 지급하는 외주비는 사업소득에 해당하며, **소득세법 제127조**에 따라 원천징수 의무가 있습니다. 지급액의 **3.3%**(소득세 3% + 지방소득세 0.3%)를 원천징수한 후 지급해야 합니다.
+
+## 근거 법령
+
+**[소득세법 제127조]** (원천징수의무) — 국내에서 사업소득을 지급하는 자는 그 금액을 지급할 때 소득세를 원천징수하여 납부할 의무가 있습니다. 프리랜서에게 지급하는 용역 대가는 사업소득에 해당합니다.
+
+**[소득세법 제144조]** (사업소득 원천징수세율) — 사업소득에 대한 원천징수세율은 100분의 3(3%)으로 규정되어 있습니다. 지방소득세 0.3%를 포함하면 실질 원천징수율은 3.3%입니다.
+
+## 유의사항
+
+- 원천징수한 세액은 다음 달 10일까지 관할 세무서에 납부해야 합니다.
+- 반기별 납부 승인을 받은 경우 1월 10일 / 7월 10일에 납부 가능합니다.
+- 프리랜서가 사업자등록을 하고 세금계산서를 발행하더라도 원천징수 의무는 동일하게 적용됩니다.`,
+      citations: ["소득세법 제127조", "소득세법 제144조"]
+    },
+    {
+      q: "집에서 일하는 개인사업자의 주거비(월세)를 사업 경비로 처리할 수 있나요?",
+      statuses: ["소득세법 검색 중...", "소득세법 시행령 제55조 내용 가져오는 중...", "답변 작성 중..."],
+      answer: `## 결론
+
+자택을 사업장으로 겸용하는 경우, **사업에 사용하는 면적 비율**에 해당하는 월세 금액을 필요경비로 인정받을 수 있습니다. 전체 월세를 경비 처리하는 것은 불가하며, 가사·사업 부분을 합리적으로 안분해야 합니다.
+
+## 근거 법령
+
+**[소득세법 제27조]** (사업소득의 필요경비 계산) — 가사 관련 경비와 혼재된 경우 사업 관련 비율만큼만 필요경비로 인정됩니다.
+
+**[소득세법 시행령 제55조]** (가사 관련 경비의 필요경비 불산입) — 가사 관련 경비는 필요경비에 산입하지 않도록 규정하고 있습니다. 다만 사업과 가사에 공통으로 사용된 경비는 사업 사용 비율에 따라 안분하여 필요경비에 산입할 수 있습니다.
+
+## 유의사항
+
+- 사업 전용 공간(서재·작업실)의 면적을 전체 주거면적 대비 비율로 계산합니다.
+- 예) 전용면적 80㎡, 사업 전용 16㎡ → 월세의 20% 경비 처리 가능
+- 임대차계약서 및 월세 납입 증빙(계좌이체 내역)을 5년간 보관해야 합니다.`,
+      citations: ["소득세법 제27조", "소득세법 시행령 제55조"]
+    }
+  ];
+
+  const FALLBACK = {
+    statuses: ["법령 검색 중...", "답변 작성 중..."],
+    answer: `## 결론
+
+데모 버전에서는 준비된 예시 질문 3개에 대한 샘플 답변만 제공됩니다. 실제 서비스에서는 어떤 세무 질문이든 법제처 법령 DB를 실시간으로 검색하여 답변을 생성합니다.
+
+## 근거 법령
+
+실제 LawTax 서비스는 법제처 OpenAPI를 통해 현행 법령 원문을 실시간으로 검색하고, AI가 관련 조문을 분석하여 결론·근거·유의사항 형식으로 답변합니다.
+
+## 유의사항
+
+- 좌측 예시 질문 버튼을 클릭하면 실제 답변 형식을 체험할 수 있습니다.
+- 서비스 도입 문의는 개발팀으로 연락해 주세요.`,
+    citations: []
+  };
+
+  const ARTICLES = {
+    "소득세법 제27조": {
+      effDate: "2024.01.01",
+      content: "사업소득금액을 계산할 때 필요경비에 산입할 금액은 해당 과세기간의 총수입금액에 대응하는 비용으로서 일반적으로 용인되는 통상적인 것의 합계액으로 한다.",
+      clauses: [
+        "① 사업소득금액을 계산할 때 필요경비에 산입할 금액은 해당 과세기간의 총수입금액에 대응하는 비용으로서 일반적으로 용인되는 통상적인 것의 합계액으로 한다.",
+        "② 제1항을 적용할 때 해당 과세기간 전의 총수입금액에 대응하는 비용으로서 해당 과세기간에 확정된 것은 해당 과세기간의 필요경비에 산입한다."
+      ]
+    },
+    "소득세법 제127조": {
+      effDate: "2024.01.01",
+      content: "국내에서 거주자나 비거주자에게 사업소득을 지급하는 자는 이 절의 규정에 따라 소득세를 원천징수하여야 한다.",
+      clauses: [
+        "① 국내에서 거주자나 비거주자에게 사업소득을 지급하는 자는 그 지급을 할 때에 소득세를 원천징수하여야 한다.",
+        "③ 제1항 각 호의 소득을 지급하는 자가 법인인 경우에는 그 법인의 대표자가 원천징수의무를 진다."
+      ]
+    },
+    "소득세법 제144조": {
+      effDate: "2024.01.01",
+      content: "원천징수의무자가 사업소득을 지급할 때 원천징수하는 세율은 100분의 3으로 한다.",
+      clauses: [
+        "① 원천징수의무자가 사업소득을 지급할 때 원천징수하는 세율은 100분의 3으로 한다.",
+        "② 제1항의 세율은 해당 소득에 대한 지방소득세를 포함하지 아니한다."
+      ]
+    },
+    "소득세법 시행령 제55조": {
+      effDate: "2024.01.01",
+      content: "사업자가 가사(家事)와 관련하여 지출한 비용은 필요경비에 산입하지 아니한다.",
+      clauses: [
+        "① 사업자가 가사(家事)와 관련하여 지출한 비용은 필요경비에 산입하지 아니한다.",
+        "② 사업과 가사에 공통으로 사용한 비용이 있는 경우에는 사업 관련 비용만을 필요경비에 산입한다."
+      ]
+    },
+    "소득세법 시행령 제208조의2": {
+      effDate: "2024.01.01",
+      content: "적격증빙이란 신용카드매출전표, 현금영수증, 세금계산서, 전자금융거래법에 따른 전자지급수단 거래내역 등을 말한다.",
+      clauses: [
+        "① 이 영에서 적격증빙이란 다음 각 호의 어느 하나에 해당하는 것을 말한다.",
+        "1. 신용카드매출전표 (직불카드·선불카드 포함)",
+        "2. 현금영수증",
+        "3. 세금계산서 / 계산서",
+        "4. 전자금융거래법 제2조제11호에 따른 전자지급수단의 거래내역 (네이버페이, 카카오페이 등)"
+      ]
+    }
+  };
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let busy = false;
+
+  // ── Theme ────────────────────────────────────────────────────────────────
+  function toggleTheme() {
+    const next = !document.documentElement.classList.contains('dark');
+    document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
+    document.getElementById('themeBtn').textContent = next ? '☀️' : '🌙';
+  }
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('themeBtn').textContent =
+      document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+  });
+
+  // ── Input helpers ─────────────────────────────────────────────────────────
+  function syncBtn() {
+    document.getElementById('submitBtn').disabled =
+      !document.getElementById('inp').value.trim() || busy;
+  }
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runFromInput(); }
+  }
+  function runFromInput() {
+    const q = document.getElementById('inp').value.trim();
+    if (!q || busy) return;
+    const idx = QA.findIndex(item =>
+      normalize(item.q).includes(normalize(q).slice(0, 12)) ||
+      normalize(q).includes(normalize(item.q).slice(0, 12))
+    );
+    document.getElementById('inp').value = '';
+    syncBtn();
+    start(q, idx >= 0 ? QA[idx] : { ...FALLBACK, q });
+  }
+  function run(idx) {
+    const item = QA[idx];
+    start(item.q, item);
+  }
+  function normalize(s) { return s.replace(/[^\w가-힣]/g, ''); }
+
+  // ── Main flow ─────────────────────────────────────────────────────────────
+  function start(question, item) {
+    if (busy) return;
+    busy = true;
+
+    document.getElementById('emptyState').style.display = 'none';
+    const msgs = document.getElementById('messages');
+    msgs.style.display = 'flex';
+
+    // User bubble
+    const ub = document.createElement('div');
+    ub.className = 'user-bubble';
+    ub.textContent = question;
+    msgs.appendChild(ub);
+
+    // AI card
+    const card = document.createElement('div');
+    card.className = 'ai-card';
+    msgs.appendChild(card);
+    scroll();
+
+    animate(card, item);
+  }
+
+  async function animate(card, item) {
+    const chatArea = document.getElementById('chatArea');
+    for (const msg of item.statuses) {
+      card.innerHTML = `<div class="status-msg"><div class="spinner"></div>${msg}</div>`;
+      scroll();
+      await wait(950);
+    }
+
+    card.innerHTML = '<div class="response-body" id="rb"></div>';
+    const rb = document.getElementById('rb');
+    await stream(rb, item.answer);
+
+    if (item.citations && item.citations.length) {
+      const cDiv = document.createElement('div');
+      cDiv.className = 'citations';
+      cDiv.innerHTML = `<div class="citations-label">근거 자료</div>` +
+        item.citations.map(c =>
+          `<button class="cite-chip" onclick="openDrawer('${c}')">📄 ${c}</button>`
+        ).join('');
+      card.appendChild(cDiv);
+    }
+
+    busy = false;
+    syncBtn();
+    scroll();
+  }
+
+  async function stream(el, text) {
+    let buf = '';
+    for (let i = 0; i < text.length; i++) {
+      buf += text[i];
+      if (i % 4 === 0) {
+        el.innerHTML = md(buf + '▌');
+        scroll();
+        await wait(7);
+      }
+    }
+    el.innerHTML = md(buf);
+  }
+
+  function md(text) {
+    const lines = text.split('\n');
+    let html = '', ul = false;
+    for (const line of lines) {
+      if (line.startsWith('## ')) {
+        if (ul) { html += '</ul>'; ul = false; }
+        html += `<div class="sec-title">${line.slice(3)}</div>`;
+      } else if (line.startsWith('- ')) {
+        if (!ul) { html += '<ul>'; ul = true; }
+        html += `<li>${inline(line.slice(2))}</li>`;
+      } else if (line.trim()) {
+        if (ul) { html += '</ul>'; ul = false; }
+        html += `<p>${inline(line)}</p>`;
+      } else {
+        if (ul) { html += '</ul>'; ul = false; }
+      }
+    }
+    if (ul) html += '</ul>';
+    return html;
+  }
+
+  function inline(t) {
+    t = t.replace(/\*\*(.*?)\*\*/g, (_, m) => {
+      const lm = m.match(/^\[(.+?)\]$/);
+      if (lm) return `<strong><button class="law-btn" onclick="openDrawer('${lm[1]}')">${lm[1]}</button></strong>`;
+      return `<strong>${m}</strong>`;
+    });
+    t = t.replace(/\[(.+?)\]/g, (_, n) =>
+      ARTICLES[n]
+        ? `<button class="law-btn" onclick="openDrawer('${n}')">${n}</button>`
+        : `[${n}]`
+    );
+    return t;
+  }
+
+  // ── Drawer ────────────────────────────────────────────────────────────────
+  function openDrawer(name) {
+    const a = ARTICLES[name];
+    document.getElementById('dTitle').innerHTML =
+      `${name}<span class="demo-chip">DEMO</span>`;
+    document.getElementById('dSub').textContent = a ? `시행일: ${a.effDate}` : '데모 데이터';
+    document.getElementById('dBody').innerHTML = a
+      ? `<div class="art-num">${name.split(' ').slice(-1)[0]}</div>
+         <div class="art-content">${a.content}</div>
+         ${a.clauses.map(c => `<div class="art-clause">${c}</div>`).join('')}`
+      : `<p style="font-size:13px;color:var(--c-ink-mute)">데모에 해당 조문 데이터가 없습니다.</p>`;
+    document.getElementById('backdrop').classList.add('open');
+    document.getElementById('drawer').classList.add('open');
+  }
+  function closeDrawer() {
+    document.getElementById('backdrop').classList.remove('open');
+    document.getElementById('drawer').classList.remove('open');
+  }
+
+  function scroll() {
+    const ca = document.getElementById('chatArea');
+    ca.scrollTop = ca.scrollHeight;
+  }
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+  </script>
+</body>
+</html>
