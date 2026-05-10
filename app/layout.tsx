@@ -8,9 +8,25 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const SITE_URL = "https://law-tax-production.up.railway.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "LawTax — 세무 법령 검색",
-  description: "세무사 전용 법령/판례 AI 검색 도구",
+  description: "세무 쟁점, 법령 근거로 즉시 확인. 세무사를 위한 AI 법령 검색 도구.",
+  openGraph: {
+    type: "website",
+    siteName: "LawTax",
+    title: "LawTax — 세무 법령 검색",
+    description: "세무 쟁점, 법령 근거로 즉시 확인. 세무사를 위한 AI 법령 검색 도구.",
+    url: SITE_URL,
+    locale: "ko_KR",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LawTax — 세무 법령 검색",
+    description: "세무 쟁점, 법령 근거로 즉시 확인. 세무사를 위한 AI 법령 검색 도구.",
+  },
 };
 
 export default function RootLayout({
