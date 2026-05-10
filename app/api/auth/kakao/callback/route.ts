@@ -1,5 +1,6 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { getOrigin } from "@/lib/origin";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 
@@ -16,7 +17,8 @@ function deriveSyntheticPassword(kakaoId: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams, origin } = new URL(req.url);
+  const { searchParams } = new URL(req.url);
+  const origin = getOrigin(req);
   const code = searchParams.get("code");
   if (!code) return NextResponse.redirect(`${origin}/login?error=no_code`);
 

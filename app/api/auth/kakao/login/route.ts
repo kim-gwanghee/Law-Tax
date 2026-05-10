@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/origin";
 
 export async function GET(req: NextRequest) {
-  const { origin } = new URL(req.url);
+  const origin = getOrigin(req);
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.KAKAO_REST_API_KEY!,
