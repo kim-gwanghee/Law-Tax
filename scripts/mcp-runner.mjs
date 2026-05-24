@@ -40,50 +40,95 @@ async function callMcpTool(name, input) {
   return content.map((c) => (c.type === "text" ? c.text : JSON.stringify(c))).join("\n");
 }
 
-function parseCitations(text) {
-  const citations = [];
-  const seen = new Set();
-  for (const p of text.match(/[「\[](.*?)[」\]]/g) ?? []) {
-    const title = p.replace(/[「」\[\]]/g, "").trim();
-    if (title && !seen.has(title)) { seen.add(title); citations.push({ title }); }
+// Build numbered citation sources from collected tool results.
+// Each get_law_text result becomes one citation; search_law results provide context only.
+function buildSources(collectedResults) {
+  const sources = [];
+  for (const r of collectedResults) {
+    if (r.tool !== "get_law_text") continue;
+    const lawName = r.input?.lawName ?? r.input?.law ?? "";
+    const article = r.input?.jo ?? r.input?.article ?? "";
+    const title = [lawName, article].filter(Boolean).join(" ").trim() || "법령 조문";
+    sources.push({ law: lawName, article, title, snippet: r.result });
   }
-  return citations;
+  return sources;
+}
+
+// Pick out [1], [2] markers that actually appear in the final answer and return them in order.
+function pickCitedSources(text, sources) {
+  const used = new Set();
+  const re = /\[(\d+)\]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const idx = parseInt(m[1], 10) - 1;
+    if (idx >= 0 && idx < sources.length) used.add(idx);
+  }
+  if (used.size === 0) return sources.map((s, i) => ({ id: i + 1, ...s }));
+  return [...used].sort((a, b) => a - b).map((i) => ({ id: i + 1, ...sources[i] }));
 }
 
 // Final answer with a CLEAN context — only query + tool results, no accumulated noise
 async function streamFinalAnswer(query, collectedResults) {
   emit({ type: "status", message: "답변 작성 중..." });
 
-  const resultsText = collectedResults
-    .map((r) => `[${r.tool} 결과]\n${r.result}`)
-    .join("\n\n");
+  const sources = buildSources(collectedResults);
+
+  // Numbered source block for inline citation.
+  // Each entry: [N] 법령명 조문 — 조문 본문(요약).
+  const sourcesText = sources.length
+    ? sources
+        .map((s, i) => {
+          const head = [s.law, s.article].filter(Boolean).join(" ") || "검색된 조문";
+          const body = (s.snippet ?? "").trim().slice(0, 1200);
+          return `[${i + 1}] ${head}\n${body}`;
+        })
+        .join("\n\n")
+    : "검색 결과 없음";
 
   const userMessage = [
-    "[법령 검색 결과]",
-    resultsText || "검색 결과 없음",
+    "[법령 검색 결과 — 출처 번호 매김]",
+    sourcesText,
     "",
     "[질문]",
     query,
     "",
-    "위 검색된 법령 조문에 근거하여 반드시 다음 형식으로 한국어로 답변하십시오.",
+    "위 출처에 근거하여 한국어로 답변하십시오. 답변 시 반드시 아래 두 모드 중 하나를 골라 작성하십시오.",
+    "",
+    "━━━ 모드 A. 사실관계가 충분한 경우 ━━━",
+    "다음 3개 섹션 형식으로 답변하십시오.",
     "",
     "## 결론",
-    "[핵심 판단을 2~3문장으로. 가능 여부를 명확히 표현하십시오.]",
+    "[핵심 판단을 2~3문장으로. 가능 여부를 명확히 표현하십시오. 근거를 언급할 때는 위 출처 번호를 [1], [2] 형태로 본문 안에 인라인으로 표기하십시오.]",
     "",
     "## 근거 법령",
-    "[검색된 법령명, 조문 번호를 명시하고 결론과의 연결을 설명하십시오. 조문 핵심 내용을 인용하십시오.]",
+    "[출처 번호를 [1], [2] 형태로 표시하고 결론과의 연결을 설명하십시오. 조문 핵심 내용을 짧게 인용하십시오.]",
     "",
     "## 유의사항",
-    "[전제 사실관계, 결론이 달라질 수 있는 조건, 추가 확인 필요 사항을 안내하십시오.]",
+    "[전제 사실관계, 결론이 달라질 수 있는 조건, 추가 확인 필요 사항.]",
+    "",
+    "━━━ 모드 B. 사실관계가 불명확하여 단정 답변이 위험한 경우 ━━━",
+    "결론을 추측하지 말고 아래 형식으로 추가 질문을 요청하십시오.",
+    "",
+    "## 사실관계 확인 필요",
+    "[왜 추가 확인이 필요한지 1~2문장으로 설명하십시오.]",
+    "",
+    "## 확인이 필요한 사항",
+    "1. [구체적 질문 1]",
+    "2. [구체적 질문 2]",
+    "3. [구체적 질문 3]",
+    "(필요 시 최대 7개까지)",
+    "",
+    "## 현재까지 검토된 근거",
+    "[검색된 출처 중 관련성이 있는 항목을 [1], [2] 형태로 간단히 정리.]",
+    "",
+    "모드 선택 기준: 질문에서 결론을 좌우할 핵심 사실(금액·시점·관계·업종·과세기간 등)이 빠져 있고, 결론이 그 사실에 따라 달라진다면 모드 B를 사용하십시오. 핵심 사실이 충분히 제시되어 있으면 모드 A를 사용하십시오.",
   ].join("\n");
 
-  // Use a minimal system prompt — no tool-calling instructions.
-  // The original systemPrompt includes "반드시 search_law → get_law_text 호출" which causes
-  // the model to output raw <function_calls> XML when no tools are registered.
   const answerSystemPrompt = `당신은 세무사를 보조하는 세법 분석 전문가입니다.
 제공된 법령 조문 검색 결과만을 근거로 한국어로 답변합니다.
 도구 호출이나 XML 태그는 절대 출력하지 마십시오.
-반드시 ## 결론 / ## 근거 법령 / ## 유의사항 3개 섹션 형식으로만 답변하십시오.`;
+출처를 언급할 때는 반드시 [1], [2] 형태의 번호 표기를 본문 안에 인라인으로 사용하십시오. 번호는 제공된 출처 목록의 번호와 일치해야 합니다.
+사실관계가 불명확하면 단정하지 말고 사실관계 확인 모드로 응답하십시오.`;
 
   let finalText = "";
   const stream = anthropic.messages.stream({
@@ -100,7 +145,9 @@ async function streamFinalAnswer(query, collectedResults) {
     }
   }
 
-  emit({ type: "done", citations: parseCitations(finalText) });
+  const cited = pickCitedSources(finalText, sources);
+  const mode = /##\s*사실관계 확인 필요/.test(finalText) ? "clarify" : "answer";
+  emit({ type: "done", citations: cited, mode });
 }
 
 try {

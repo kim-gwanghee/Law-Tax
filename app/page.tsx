@@ -23,12 +23,21 @@ const C = {
 const SHADOW_1 = "var(--shadow-1)";
 const SHADOW_2 = "var(--shadow-2)";
 
-type Citation = { title: string; url?: string };
+type Citation = {
+  id: number;
+  title: string;
+  url?: string;
+  law?: string;
+  article?: string;
+  snippet?: string;
+};
+type AnswerMode = "answer" | "clarify";
 type Message = {
   id?: string;
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  mode?: AnswerMode;
   retryQuery?: string;
   feedback?: 1 | -1;
 };
@@ -51,6 +60,81 @@ function SpinnerIcon() {
 }
 
 type LawClickHandler = (law: string, article: string) => void;
+type CitationClickHandler = (n: number) => void;
+
+// ─── Inline citation badge — superscript [N] with hover preview ──────────
+function CitationBadge({
+  n,
+  citation,
+  onClick,
+}: {
+  n: number;
+  citation?: Citation;
+  onClick: CitationClickHandler;
+}) {
+  const [hover, setHover] = useState(false);
+  const preview = citation?.snippet?.trim().slice(0, 220);
+  return (
+    <span style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => onClick(n)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        aria-label={`출처 ${n}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 16,
+          height: 16,
+          padding: "0 4px",
+          marginLeft: 2,
+          fontSize: "10px",
+          fontWeight: 500,
+          lineHeight: 1,
+          verticalAlign: "super",
+          background: hover ? C.primary : C.primarySubtle,
+          color: hover ? "#fff" : C.primaryDeep,
+          border: "none",
+          borderRadius: "9999px",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          transition: "background 0.12s, color 0.12s",
+        }}
+      >
+        {n}
+      </button>
+      {hover && citation && (
+        <span
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 20,
+            width: 280,
+            padding: "10px 12px",
+            background: C.ink,
+            color: "#fff",
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 300,
+            lineHeight: 1.5,
+            boxShadow: SHADOW_2,
+            pointerEvents: "none",
+            whiteSpace: "normal",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ display: "block", fontWeight: 500, marginBottom: 4, fontSize: 11, color: C.primarySubtle, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            출처 [{n}]
+          </span>
+          <span style={{ display: "block", fontWeight: 500, marginBottom: 4 }}>{citation.title}</span>
+          {preview && <span style={{ display: "block", opacity: 0.8 }}>{preview}{citation.snippet && citation.snippet.length > 220 ? "…" : ""}</span>}
+        </span>
+      )}
+    </span>
+  );
+}
 
 // ─── Law article linkifier ────────────────────────────────────────────────
 // Group 1 = law name (소득세법 | 소득세법 시행령 etc.)
@@ -109,17 +193,52 @@ function linkifyLaw(text: string, parts: React.ReactNode[], onLawClick: LawClick
   addSegment(text.slice(last));
 }
 
-// ─── Inline markdown: **bold** + law links ────────────────────────────────
-function renderInline(str: string, onLawClick: LawClickHandler, fallbackLaw?: string | null): React.ReactNode {
+// Split a text segment around [N] citation markers; non-marker chunks get linkifyLaw,
+// markers become CitationBadge components.
+const CITE_RE = /\[(\d+)\]/g;
+function splitCitations(
+  text: string,
+  parts: React.ReactNode[],
+  onLawClick: LawClickHandler,
+  onCitationClick: CitationClickHandler,
+  citationsByN: Map<number, Citation>,
+  fallbackLaw?: string | null,
+) {
+  CITE_RE.lastIndex = 0;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CITE_RE.exec(text)) !== null) {
+    if (m.index > last) linkifyLaw(text.slice(last, m.index), parts, onLawClick, fallbackLaw);
+    const n = parseInt(m[1], 10);
+    parts.push(
+      <CitationBadge
+        key={parts.length}
+        n={n}
+        citation={citationsByN.get(n)}
+        onClick={onCitationClick}
+      />
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) linkifyLaw(text.slice(last), parts, onLawClick, fallbackLaw);
+}
+
+// ─── Inline markdown: **bold** + law links + [N] citations ───────────────
+function renderInline(
+  str: string,
+  onLawClick: LawClickHandler,
+  onCitationClick: CitationClickHandler,
+  citationsByN: Map<number, Citation>,
+  fallbackLaw?: string | null,
+): React.ReactNode {
   const parts: React.ReactNode[] = [];
   const boldRe = /\*\*([^*]+)\*\*/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = boldRe.exec(str)) !== null) {
-    if (m.index > last) linkifyLaw(str.slice(last, m.index), parts, onLawClick, fallbackLaw);
-    // Also linkify inside bold so "**소득세법 제127조**" becomes a clickable bold link
+    if (m.index > last) splitCitations(str.slice(last, m.index), parts, onLawClick, onCitationClick, citationsByN, fallbackLaw);
     const innerParts: React.ReactNode[] = [];
-    linkifyLaw(m[1], innerParts, onLawClick, fallbackLaw);
+    splitCitations(m[1], innerParts, onLawClick, onCitationClick, citationsByN, fallbackLaw);
     parts.push(
       <strong key={parts.length} style={{ fontWeight: 600, color: C.ink }}>
         {innerParts}
@@ -127,21 +246,31 @@ function renderInline(str: string, onLawClick: LawClickHandler, fallbackLaw?: st
     );
     last = m.index + m[0].length;
   }
-  if (last < str.length) linkifyLaw(str.slice(last), parts, onLawClick, fallbackLaw);
+  if (last < str.length) splitCitations(str.slice(last), parts, onLawClick, onCitationClick, citationsByN, fallbackLaw);
   return <>{parts}</>;
 }
 
 // ─── Block markdown renderer ──────────────────────────────────────────────
-function MarkdownContent({ text, onLawClick }: { text: string; onLawClick: LawClickHandler }) {
+function MarkdownContent({
+  text,
+  onLawClick,
+  onCitationClick,
+  citations = [],
+}: {
+  text: string;
+  onLawClick: LawClickHandler;
+  onCitationClick: CitationClickHandler;
+  citations?: Citation[];
+}) {
   const blocks: React.ReactNode[] = [];
   const lines = text.split("\n");
-  // Primary law = first law name that appears with a full article reference.
-  // Used as fallback for bare "제N조" mentions that lack a law name prefix.
   const primaryLaw = text.match(/([가-힣]+(?:법|령|칙)(?:\s+(?:시행령|시행규칙))?)\s+제\d+조/)?.[1] ?? null;
+  const citationsByN = new Map(citations.map((c) => [c.id, c]));
+  const inline = (s: string) => renderInline(s, onLawClick, onCitationClick, citationsByN, primaryLaw);
   let listItems: string[] = [];
   let listType: "ul" | "ol" | null = null;
   let paraLines: string[] = [];
-  let olCount = 0; // tracks ol item count across ul interruptions
+  let olCount = 0;
 
   const flushPara = () => {
     if (!paraLines.length) return;
@@ -149,7 +278,7 @@ function MarkdownContent({ text, onLawClick }: { text: string; onLawClick: LawCl
     if (joined)
       blocks.push(
         <p key={blocks.length} style={{ lineHeight: 1.6, fontWeight: 300 }}>
-          {renderInline(joined, onLawClick, primaryLaw)}
+          {inline(joined)}
         </p>
       );
     paraLines = [];
@@ -166,13 +295,13 @@ function MarkdownContent({ text, onLawClick }: { text: string; onLawClick: LawCl
     if (type === "ol") {
       blocks.push(
         <ol key={blocks.length} start={olStart} className="list-decimal pl-5 space-y-1">
-          {items.map((item, i) => <li key={i} style={liStyle}>{renderInline(item, onLawClick, primaryLaw)}</li>)}
+          {items.map((item, i) => <li key={i} style={liStyle}>{inline(item)}</li>)}
         </ol>
       );
     } else {
       blocks.push(
         <ul key={blocks.length} className="list-disc pl-5 space-y-1">
-          {items.map((item, i) => <li key={i} style={liStyle}>{renderInline(item, onLawClick, primaryLaw)}</li>)}
+          {items.map((item, i) => <li key={i} style={liStyle}>{inline(item)}</li>)}
         </ul>
       );
     }
@@ -196,7 +325,7 @@ function MarkdownContent({ text, onLawClick }: { text: string; onLawClick: LawCl
           paddingBottom: "6px",
           borderBottom: `1px solid ${C.hairline}`,
         }}>
-          {renderInline(heading, onLawClick, primaryLaw)}
+          {inline(heading)}
         </p>
       );
     } else if (/^> /.test(t)) {
@@ -209,7 +338,7 @@ function MarkdownContent({ text, onLawClick }: { text: string; onLawClick: LawCl
           color: C.ink2,
           fontWeight: 300,
         }}>
-          {renderInline(t.replace(/^> /, ""), onLawClick, primaryLaw)}
+          {inline(t.replace(/^> /, ""))}
         </blockquote>
       );
     } else if (/^[-*] /.test(t)) {
@@ -491,6 +620,7 @@ export default function Home() {
                   ...msgs[msgs.length - 1],
                   content: finalText || "관련 법령·판례를 찾을 수 없습니다.",
                   citations: event.citations ?? [],
+                  mode: event.mode ?? "answer",
                 };
                 return msgs;
               });
@@ -740,10 +870,24 @@ export default function Home() {
                   <div className="max-w-[88%] space-y-2">
                     <div className="rounded-xl px-6 py-5"
                       style={{
-                        background: C.canvas,
-                        border: `1px solid ${C.hairline}`,
+                        background: msg.mode === "clarify" ? "#fffaf0" : C.canvas,
+                        border: `1px solid ${msg.mode === "clarify" ? "#f0c674" : C.hairline}`,
                         boxShadow: SHADOW_1,
                       }}>
+
+                      {/* Clarify mode banner */}
+                      {msg.mode === "clarify" && (
+                        <div className="flex items-center gap-2 mb-3">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a16207" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
+                          </svg>
+                          <span style={{ fontSize: "11px", fontWeight: 500, color: "#a16207", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                            사실관계 확인 필요
+                          </span>
+                        </div>
+                      )}
 
                       {/* Status indicator */}
                       {loading && i === messages.length - 1 && streamStatus && (
@@ -757,7 +901,15 @@ export default function Home() {
 
                       {msg.content ? (
                         <>
-                          <MarkdownContent text={msg.content} onLawClick={(law, article) => setLawPane({ law, article })} />
+                          <MarkdownContent
+                            text={msg.content}
+                            onLawClick={(law, article) => setLawPane({ law, article })}
+                            onCitationClick={(n) => {
+                              const c = msg.citations?.find((x) => x.id === n);
+                              if (c?.law && c?.article) setLawPane({ law: c.law, article: c.article });
+                            }}
+                            citations={msg.citations}
+                          />
                           {/* Blinking cursor while streaming */}
                           {loading && i === messages.length - 1 && (
                             <span className="inline-block w-0.5 h-[0.85em] animate-pulse align-middle ml-0.5"
@@ -817,7 +969,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Citations — canvas-soft panel */}
+                    {/* Citations — canvas-soft panel with numbered, clickable entries */}
                     {msg.citations && msg.citations.length > 0 && (
                       <div className="px-5 py-3 rounded-xl space-y-1.5"
                         style={{
@@ -828,18 +980,48 @@ export default function Home() {
                         <p className="tnum" style={{ fontWeight: 400, color: C.inkMute, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "11px" }}>
                           근거 자료
                         </p>
-                        {msg.citations.map((c, j) => (
-                          <div key={j} className="tnum">
-                            {c.url ? (
-                              <a href={c.url} target="_blank" rel="noopener noreferrer"
-                                style={{ color: C.primary }} className="hover:underline">
+                        {msg.citations.map((c) => {
+                          const clickable = !!(c.law && c.article);
+                          const content = (
+                            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                minWidth: 16,
+                                height: 16,
+                                padding: "0 4px",
+                                fontSize: "10px",
+                                fontWeight: 500,
+                                background: C.primarySubtle,
+                                color: C.primaryDeep,
+                                borderRadius: "9999px",
+                              }}>{c.id}</span>
+                              <span style={{ color: clickable || c.url ? C.primary : C.ink2 }}>
                                 {c.title}
-                              </a>
-                            ) : (
-                              <span style={{ color: C.ink2 }}>{c.title}</span>
-                            )}
-                          </div>
-                        ))}
+                              </span>
+                            </span>
+                          );
+                          return (
+                            <div key={c.id} className="tnum">
+                              {c.url ? (
+                                <a href={c.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                                  {content}
+                                </a>
+                              ) : clickable ? (
+                                <button
+                                  onClick={() => setLawPane({ law: c.law!, article: c.article! })}
+                                  className="hover:underline"
+                                  style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", textAlign: "left" }}
+                                >
+                                  {content}
+                                </button>
+                              ) : (
+                                content
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
