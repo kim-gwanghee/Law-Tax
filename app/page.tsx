@@ -250,6 +250,19 @@ function renderInline(
   return <>{parts}</>;
 }
 
+// ─── GFM table support ────────────────────────────────────────────────────
+// Separator row, e.g. "|---|---|" or "---|:--:|---". Allows optional outer pipes
+// and alignment colons.
+const TABLE_SEP_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/;
+
+// Split a "| a | b |" row into trimmed cells, tolerating missing outer pipes.
+function splitTableRow(s: string): string[] {
+  let x = s.trim();
+  if (x.startsWith("|")) x = x.slice(1);
+  if (x.endsWith("|")) x = x.slice(0, -1);
+  return x.split("|").map((c) => c.trim());
+}
+
 // ─── Block markdown renderer ──────────────────────────────────────────────
 function MarkdownContent({
   text,
@@ -309,6 +322,54 @@ function MarkdownContent({
 
   for (let li = 0; li < lines.length; li++) {
     const t = lines[li].trim();
+    // Table: a "| ... |" header row immediately followed by a separator row.
+    if (t.includes("|") && li + 1 < lines.length && TABLE_SEP_RE.test(lines[li + 1].trim())) {
+      flushPara();
+      flushList();
+      olCount = 0;
+      const header = splitTableRow(t);
+      const bodyRows: string[][] = [];
+      let j = li + 2;
+      while (j < lines.length && lines[j].trim() !== "" && lines[j].includes("|")) {
+        bodyRows.push(splitTableRow(lines[j].trim()));
+        j++;
+      }
+      blocks.push(
+        <div key={blocks.length} style={{ overflowX: "auto", margin: "4px 0" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px" }}>
+            <thead>
+              <tr>
+                {header.map((h, hi) => (
+                  <th key={hi} style={{
+                    textAlign: "left", fontWeight: 600, color: C.ink,
+                    borderBottom: `1px solid ${C.hairline}`, padding: "6px 10px",
+                    whiteSpace: "nowrap",
+                  }}>
+                    {inline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, ri) => (
+                <tr key={ri}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={{
+                      verticalAlign: "top", color: C.ink2, fontWeight: 300,
+                      borderBottom: `1px solid ${C.hairline}`, padding: "6px 10px",
+                    }}>
+                      {inline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      li = j - 1; // for-loop will advance past the consumed rows
+      continue;
+    }
     if (/^#{1,3} /.test(t)) {
       flushPara();
       flushList();
