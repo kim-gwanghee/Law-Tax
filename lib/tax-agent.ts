@@ -111,7 +111,9 @@ export async function runTaxQuery({
   emit: Emit;
   signal?: AbortSignal;
 }): Promise<void> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Bump retries above the SDK default (2) to ride out transient 429/529/network
+  // blips from the Anthropic API, a likely source of intermittent 500s.
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 });
 
   const messages: Anthropic.Messages.MessageParam[] = [
     ...history
@@ -239,7 +241,19 @@ export async function runTaxQuery({
       if (block.name === "search_law") emit({ type: "status", message: `${input.query ?? "법령"} 검색 중...` });
       else if (block.name === "get_law_text") emit({ type: "status", message: `${input.jo ?? "조문"} 내용 확인 중...` });
 
-      const result = await callLawTool(block.name, input, signal);
+      // A single flaky tool call (law.go.kr network/parse error) must not crash the
+      // whole request. Hand the model an error result so it can still answer from
+      // what it has, or ask for clarification, instead of surfacing a 500.
+      let result: LawToolResult;
+      try {
+        result = await callLawTool(block.name, input, signal);
+      } catch (e) {
+        result = {
+          text: `법령 조회 중 오류가 발생했습니다(${(e as Error)?.message ?? "unknown"}). 이 조문 없이 답변하거나, 사실관계 확인이 필요하면 추가 질문을 요청하십시오.`,
+          lawName: "",
+          article: String(input.jo ?? ""),
+        };
+      }
       toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result.text });
       collected.push({ tool: block.name, input, result });
     }

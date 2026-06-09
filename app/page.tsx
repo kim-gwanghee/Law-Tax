@@ -18,6 +18,9 @@ const C = {
   canvasSoft:    "var(--c-canvas-soft)",
   hairline:      "var(--c-hairline)",
   hairlineInput: "var(--c-hairline-input)",
+  warnBg:        "var(--c-warn-bg)",
+  warnBorder:    "var(--c-warn-border)",
+  warnInk:       "var(--c-warn-ink)",
 } as const;
 
 const SHADOW_1 = "var(--shadow-1)";
@@ -931,20 +934,20 @@ export default function Home() {
                   <div className="max-w-[88%] space-y-2">
                     <div className="rounded-xl px-6 py-5"
                       style={{
-                        background: msg.mode === "clarify" ? "#fffaf0" : C.canvas,
-                        border: `1px solid ${msg.mode === "clarify" ? "#f0c674" : C.hairline}`,
+                        background: msg.mode === "clarify" ? C.warnBg : C.canvas,
+                        border: `1px solid ${msg.mode === "clarify" ? C.warnBorder : C.hairline}`,
                         boxShadow: SHADOW_1,
                       }}>
 
                       {/* Clarify mode banner */}
                       {msg.mode === "clarify" && (
                         <div className="flex items-center gap-2 mb-3">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a16207" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.warnInk} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="12" cy="12" r="10"/>
                             <line x1="12" y1="8" x2="12" y2="12"/>
                             <line x1="12" y1="16" x2="12.01" y2="16"/>
                           </svg>
-                          <span style={{ fontSize: "11px", fontWeight: 500, color: "#a16207", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 500, color: C.warnInk, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                             사실관계 확인 필요
                           </span>
                         </div>

@@ -95,7 +95,16 @@ export async function getLawText(
   const joCode = joLabel ? buildJO(joLabel) : "";
   const url = `${LAW_API_BASE}/lawService.do?OC=${apiKey()}&target=eflaw&type=JSON&MST=${mst}${joCode ? `&JO=${joCode}` : ""}`;
   const res = await fetch(url, { signal });
-  const json = await res.json();
+  // law.go.kr intermittently returns an HTML error page (rate limit / maintenance)
+  // instead of JSON. Parse defensively so a transient blip degrades gracefully
+  // instead of throwing and turning the whole request into a 500.
+  const raw = await res.text();
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return { text: "법령 본문 조회가 일시적으로 실패했습니다(법령정보 서비스 응답 오류). 잠시 후 다시 시도하거나 다른 조문을 확인하십시오.", lawName, article: joLabel };
+  }
 
   const lawData = json?.법령;
   if (!lawData) return { text: "조문 데이터를 찾을 수 없습니다.", lawName, article: joLabel };

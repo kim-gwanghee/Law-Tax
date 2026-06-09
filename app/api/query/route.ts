@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { runTaxQuery, type AgentEvent } from "@/lib/tax-agent";
 
 export const runtime = "nodejs";
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
             emit({ type: "error", message: "법령 검색 서비스가 일시적으로 느립니다. 잠시 후 다시 시도해 주세요." });
           } else {
             console.error("[query] error:", ((e as Error)?.message ?? "").slice(0, 200));
+            Sentry.captureException(e); // capture intermittent failures for diagnosis
             emit({ type: "error", message: "서버 오류가 발생했습니다. 다시 시도해 주세요." });
           }
         } finally {
