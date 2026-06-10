@@ -15,8 +15,10 @@ type HistoryMsg = { role: "user" | "assistant"; content: string };
 type Emit = (e: AgentEvent) => void;
 
 const TOOL_MODEL = "claude-haiku-4-5-20251001";
-const ANSWER_MODEL = "claude-sonnet-4-6";
-const MIN_TOOL_CALLS = 2; // minimum: search_law + get_law_text before answering
+// RAG answer: the law text is already retrieved, so the answer model only structures
+// it. Haiku is fast and sufficient here — measured Sonnet answer phase was ~14s (68%
+// of total latency). Switching to Haiku targets ~5-7s.
+const ANSWER_MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOOL_CALLS = 5; // hard cap; lets the model fetch several relevant articles
 const MAX_LOOPS = 10;
 const MAX_HISTORY = 6;
@@ -32,25 +34,24 @@ const SYSTEM_PROMPT = `당신은 세무사를 보조하는 세법·법령 질의
 → 이 경우 search_law / get_law_text를 호출하면 안 됩니다.
 
 질문이 세법·세무·법령 관련이면 아래 도구 사용 규칙을 따르십시오.
-이때는 반드시 search_law → get_law_text 순서로 도구를 호출한 뒤 답변하십시오.
-관련 질문에 도구 없이 직접 답변하는 것은 금지됩니다.
+반드시 조문 본문을 get_law_text로 가져온 뒤 답변하십시오. 도구 없이 직접 답변하는 것은 금지됩니다.
 
 ━━━ 도구 사용 규칙 (세법 관련 질문에만 적용) ━━━
 
-[규칙 1: 법률명으로만 검색]
-search_law의 query에는 반드시 정식 법률명만 사용하십시오.
-올바른 예: "소득세법", "부가가치세법", "법인세법"
-금지 예: "원천징수", "외주비", "경비처리" → NOT_FOUND 발생
+[규칙 1: 법률명을 알면 search_law 생략]
+정식 법률명을 아는 경우 search_law를 호출하지 말고 get_law_text(lawName, jo)를 바로 호출하십시오. (속도 향상)
+search_law는 법률명이 불확실하거나 어느 법인지 모를 때만 사용하십시오.
+get_law_text의 lawName/search_law의 query에는 반드시 정식 법률명만 사용하십시오. (예: "소득세법". "원천징수"·"경비처리" 같은 키워드 금지)
 
 [규칙 2: 도구를 한 번에 하나씩만 호출]
 동시에 여러 도구를 호출하지 마십시오. 순서대로 1회 호출 → 결과 확인 → 다음 호출.
 
-[규칙 3: 질문 유형별 검색 경로]
-▶ 원천징수 → search_law("소득세법") → get_law_text(mst, "제127조")
-▶ 필요경비·사업 경비·주거비·임차료(월세)·업무용 자산 → search_law("소득세법") → get_law_text(mst, "제27조") (필요경비 일반요건: 업무관련성·통상성)
-▶ 부가가치세(매입세액·면세) → search_law("부가가치세법") → get_law_text(mst, "제39조")
-▶ 법인세(손금·익금) → search_law("법인세법") → get_law_text(mst, "제19조")
-▶ 상속·증여 → search_law("상속세 및 증여세법") → get_law_text(mst, "제1조")
+[규칙 3: 질문 유형별 경로 (법률명을 알면 바로 get_law_text)]
+▶ 원천징수 → get_law_text(lawName="소득세법", jo="제127조")
+▶ 필요경비·사업 경비·주거비·임차료(월세)·업무용 자산 → get_law_text(lawName="소득세법", jo="제27조") (필요경비 일반요건: 업무관련성·통상성)
+▶ 부가가치세(매입세액·면세) → get_law_text(lawName="부가가치세법", jo="제39조")
+▶ 법인세(손금·익금) → get_law_text(lawName="법인세법", jo="제19조")
+▶ 상속·증여 → get_law_text(lawName="상속세 및 증여세법", jo="제1조")
 
 [규칙 4: 쟁점이 여러 조문에 걸치면 추가 조회]
 한 조문만으로 결론 근거가 부족하면, get_law_text를 2~3개 조문까지 추가로 호출해 충분한 근거를 확보한 뒤 답변하십시오. (예: 필요경비 일반요건 + 관련 불산입 조문)
@@ -136,6 +137,7 @@ export async function runTaxQuery({
 
   let toolCallCount = 0;
   let loopCount = 0;
+  let gotLawText = false; // require at least one get_law_text before answering (grounding)
   const collected: { tool: string; input: Record<string, unknown>; result: LawToolResult }[] = [];
 
   // Anti-loop: if the previous assistant turn already asked clarifying questions,
@@ -236,13 +238,13 @@ export async function runTaxQuery({
         emit({ type: "done", citations: [], mode: "answer" });
         return;
       }
-      // Searched but hasn't met the minimum (search + get_law_text) yet → nudge.
-      // Once the minimum is met, end_turn means the model is satisfied → answer
-      // (it may also choose to fetch more articles, up to MAX_TOOL_CALLS).
-      if (toolCallCount < MIN_TOOL_CALLS) {
+      // No article fetched yet → nudge to get_law_text. Once we have at least one
+      // article (grounding), end_turn means the model is satisfied → answer
+      // (it may also fetch more articles, up to MAX_TOOL_CALLS).
+      if (!gotLawText) {
         messages.push({
           role: "user",
-          content: "search_law로 찾은 법령의 핵심 조문을 get_law_text로 가져온 뒤 답변하십시오.",
+          content: "get_law_text로 관련 조문 본문을 가져온 뒤 답변하십시오. 법률명을 알면 lawName으로 바로 호출하십시오.",
         });
         continue;
       }
@@ -261,7 +263,10 @@ export async function runTaxQuery({
       toolCallCount++;
       const input = block.input as Record<string, unknown>;
       if (block.name === "search_law") emit({ type: "status", message: `${input.query ?? "법령"} 검색 중...` });
-      else if (block.name === "get_law_text") emit({ type: "status", message: `${input.jo ?? "조문"} 내용 확인 중...` });
+      else if (block.name === "get_law_text") {
+        gotLawText = true;
+        emit({ type: "status", message: `${input.jo ?? "조문"} 내용 확인 중...` });
+      }
 
       // A single flaky tool call (law.go.kr network/parse error) must not crash the
       // whole request. Hand the model an error result so it can still answer from
