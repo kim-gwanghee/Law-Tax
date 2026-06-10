@@ -16,8 +16,9 @@ type Emit = (e: AgentEvent) => void;
 
 const TOOL_MODEL = "claude-haiku-4-5-20251001";
 const ANSWER_MODEL = "claude-sonnet-4-6";
-const MAX_TOOL_CALLS = 2;
-const MAX_LOOPS = 6;
+const MIN_TOOL_CALLS = 2; // minimum: search_law + get_law_text before answering
+const MAX_TOOL_CALLS = 5; // hard cap; lets the model fetch several relevant articles
+const MAX_LOOPS = 10;
 const MAX_HISTORY = 6;
 
 const SYSTEM_PROMPT = `당신은 세무사를 보조하는 세법·법령 질의응답 AI입니다.
@@ -46,10 +47,13 @@ search_law의 query에는 반드시 정식 법률명만 사용하십시오.
 
 [규칙 3: 질문 유형별 검색 경로]
 ▶ 원천징수 → search_law("소득세법") → get_law_text(mst, "제127조")
-▶ 필요경비·사업 경비 → search_law("소득세법") → get_law_text(mst, "제27조")
+▶ 필요경비·사업 경비·주거비·임차료(월세)·업무용 자산 → search_law("소득세법") → get_law_text(mst, "제27조") (필요경비 일반요건: 업무관련성·통상성)
 ▶ 부가가치세(매입세액·면세) → search_law("부가가치세법") → get_law_text(mst, "제39조")
 ▶ 법인세(손금·익금) → search_law("법인세법") → get_law_text(mst, "제19조")
 ▶ 상속·증여 → search_law("상속세 및 증여세법") → get_law_text(mst, "제1조")
+
+[규칙 4: 쟁점이 여러 조문에 걸치면 추가 조회]
+한 조문만으로 결론 근거가 부족하면, get_law_text를 2~3개 조문까지 추가로 호출해 충분한 근거를 확보한 뒤 답변하십시오. (예: 필요경비 일반요건 + 관련 불산입 조문)
 
 ━━━ 답변 원칙 ━━━
 
@@ -62,7 +66,7 @@ const ANSWER_SYSTEM_PROMPT = `당신은 세무사를 보조하는 세법 분석 
 제공된 법령 조문 검색 결과만을 근거로 한국어로 답변합니다.
 도구 호출이나 XML 태그는 절대 출력하지 마십시오.
 출처를 언급할 때는 반드시 [1], [2] 형태의 번호 표기를 본문 안에 인라인으로 사용하십시오. 번호는 제공된 출처 목록의 번호와 일치해야 합니다.
-사실관계가 불명확하면 단정하지 말고 사실관계 확인 모드로 응답하십시오.`;
+세법 답변은 본질적으로 조건부입니다. 사실관계가 일부 불명확해도 가능한 한 '요건별 조건부 결론'으로 답하고, 추가 질문(확인 모드)은 핵심 사실이 거의 없어 어떤 조건부 결론도 세울 수 없을 때만 최소한으로 사용하십시오.`;
 
 function textOf(content: Anthropic.Messages.ContentBlock[]): string {
   return content
@@ -133,6 +137,11 @@ export async function runTaxQuery({
   let loopCount = 0;
   const collected: { tool: string; input: Record<string, unknown>; result: LawToolResult }[] = [];
 
+  // Anti-loop: if the previous assistant turn already asked clarifying questions,
+  // do not clarify again — commit to a conditional answer with the facts at hand.
+  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
+  const priorWasClarify = !!lastAssistant?.content && /##\s*확인이 필요한 사항/.test(lastAssistant.content);
+
   emit({ type: "status", message: "생각 중..." });
 
   async function streamFinalAnswer() {
@@ -165,15 +174,21 @@ export async function runTaxQuery({
       "## 유의사항",
       "[전제 사실관계, 결론이 달라질 수 있는 조건, 추가 확인 필요 사항.]",
       "",
-      "━━━ 모드 B. 사실관계가 불명확하여 단정이 위험한 경우 ━━━",
+      "━━━ 모드 B. 핵심 사실이 거의 없어 어떤 조건부 결론도 무의미한 경우에만 ━━━",
       "[먼저 왜 추가 확인이 필요한지 1~2문장으로 설명하십시오. 이 설명에는 별도 제목(##)을 붙이지 말고 본문으로 작성하십시오.]",
       "## 확인이 필요한 사항",
-      "1. [구체적 질문] (필요 시 최대 7개)",
+      "1. [구체적 질문 — 결론을 가장 크게 좌우하는 것만, 최대 3개]",
       "## 현재까지 검토된 근거",
       "[관련 출처를 [1], [2]로 간단히 정리.]",
       "",
-      "모드 선택 기준: 결론을 좌우할 핵심 사실(금액·시점·관계·업종·과세기간 등)이 빠져 있고 결론이 그에 따라 달라지면 모드 B, 충분하면 모드 A.",
-    ].join("\n");
+      "━━━ 모드 선택 기준 (중요) ━━━",
+      "- 기본값은 모드 A입니다. 세법 답변은 본질적으로 조건부이므로, 사실관계가 일부 불명확해도 '요건별 조건부 결론'(예: ○○ 요건 충족 시 가능 [1], △△인 경우 불가)으로 답하는 것을 우선하십시오.",
+      "- 모드 B는 핵심 사실이 거의 없어 어떤 조건부 결론도 세울 수 없을 때만 사용하고, 질문은 최대 3개로 제한하십시오.",
+      "- 사용자가 이미 사실관계를 제시했다면, 그 사실을 전제로 모드 A 결론을 작성하고 남은 변수는 '유의사항'에 간단히 적으십시오. 다시 질문으로 되묻지 마십시오.",
+      priorWasClarify
+        ? "- ⚠ 직전 답변에서 이미 확인 질문을 했습니다. 이번에는 절대 추가 질문(모드 B)을 하지 말고, 사용자가 제공한 사실관계와 검색된 근거로 모드 A 조건부 결론을 반드시 작성하십시오."
+        : "",
+    ].filter(Boolean).join("\n");
 
     let finalText = "";
     const stream = anthropic.messages.stream(
@@ -215,8 +230,10 @@ export async function runTaxQuery({
         emit({ type: "done", citations: [], mode: "answer" });
         return;
       }
-      // Searched but didn't fetch the article yet → nudge once to get_law_text.
-      if (toolCallCount < MAX_TOOL_CALLS) {
+      // Searched but hasn't met the minimum (search + get_law_text) yet → nudge.
+      // Once the minimum is met, end_turn means the model is satisfied → answer
+      // (it may also choose to fetch more articles, up to MAX_TOOL_CALLS).
+      if (toolCallCount < MIN_TOOL_CALLS) {
         messages.push({
           role: "user",
           content: "search_law로 찾은 법령의 핵심 조문을 get_law_text로 가져온 뒤 답변하십시오.",
