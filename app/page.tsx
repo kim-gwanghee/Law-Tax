@@ -610,10 +610,7 @@ export default function Home() {
     const dark = saved !== "light";
     setIsDark(dark);
     document.documentElement.classList.toggle("dark", dark);
-    // Sidebar open by default on desktop, closed on mobile
-    if (window.matchMedia("(min-width: 768px)").matches) {
-      setSidebarOpen(true);
-    }
+    // Sidebar starts closed on entry (desktop and mobile); user opens it via the toggle.
   }, []);
 
   const toggleTheme = () => {
