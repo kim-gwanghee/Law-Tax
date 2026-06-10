@@ -974,11 +974,16 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* Status indicator */}
-                      {loading && i === messages.length - 1 && streamStatus && (
+                      {/* Status indicator — pre-answer stages; hands off to the
+                          typing cursor once the answer starts streaming */}
+                      {loading && i === messages.length - 1 && streamStatus && !msg.content && (
                         <div className="flex items-center gap-2 mb-3">
                           <SpinnerIcon />
-                          <span style={{ fontSize: "12px", fontWeight: 400, color: C.primary, letterSpacing: "0.04em" }}>
+                          <span
+                            key={streamStatus}
+                            className="status-in"
+                            style={{ fontSize: "12px", fontWeight: 400, color: C.primary, letterSpacing: "0.04em" }}
+                          >
                             {streamStatus}
                           </span>
                         </div>

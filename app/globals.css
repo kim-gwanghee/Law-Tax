@@ -46,6 +46,18 @@ html.dark {
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
 }
 
+/* Staged status transition — each new status label fades + slides up in place,
+   so "검색 중 → 내용 확인 중 → 답변 작성 중" reads as deliberate stages. */
+@keyframes statusIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.status-in { animation: statusIn 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .status-in { animation: none; }
+}
+
 body {
   background: var(--c-canvas);
   color: var(--c-ink);
