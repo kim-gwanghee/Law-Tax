@@ -60,6 +60,12 @@ export type LawToolResult = {
   article: string;     // article label e.g. "제27조" (for citations)
 };
 
+// Article-text cache keyed by mst+jo. Popular articles (소득세법 제27조,
+// 부가가치세법 제39조 …) are fetched repeatedly across users; caching the parsed
+// result skips the law.go.kr round-trip on a hit. Only successful fetches are cached.
+const articleCache = new Map<string, { result: LawToolResult; ts: number }>();
+const ARTICLE_TTL = 24 * 60 * 60 * 1000;
+
 // search_law: 정식 법률명 → MST. Cached, so repeat queries skip the network round-trip.
 export async function searchLaw(
   input: { query?: string },
@@ -93,6 +99,10 @@ export async function getLawText(
   if (!mst) return { text: "mst 또는 lawName이 필요합니다.", lawName, article: joLabel };
 
   const joCode = joLabel ? buildJO(joLabel) : "";
+  const cacheKey = `${mst}:${joCode}`;
+  const cached = articleCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ARTICLE_TTL) return cached.result;
+
   const url = `${LAW_API_BASE}/lawService.do?OC=${apiKey()}&target=eflaw&type=JSON&MST=${mst}${joCode ? `&JO=${joCode}` : ""}`;
   const res = await fetch(url, { signal });
   // law.go.kr intermittently returns an HTML error page (rate limit / maintenance)
@@ -146,7 +156,9 @@ export async function getLawText(
     ? `[${canonicalName}${effDate ? ` · 시행 ${effDate}` : ""}]\n${body}`
     : `[${canonicalName}] 해당 조문 본문을 찾지 못했습니다.`;
 
-  return { text, lawName: canonicalName, article: joLabel };
+  const result = { text, lawName: canonicalName, article: joLabel };
+  if (body) articleCache.set(cacheKey, { result, ts: Date.now() }); // cache only real content
+  return result;
 }
 
 // Anthropic tool definitions — only the two tools the flow actually uses,

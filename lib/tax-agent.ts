@@ -66,7 +66,8 @@ const ANSWER_SYSTEM_PROMPT = `당신은 세무사를 보조하는 세법 분석 
 제공된 법령 조문 검색 결과만을 근거로 한국어로 답변합니다.
 도구 호출이나 XML 태그는 절대 출력하지 마십시오.
 출처를 언급할 때는 반드시 [1], [2] 형태의 번호 표기를 본문 안에 인라인으로 사용하십시오. 번호는 제공된 출처 목록의 번호와 일치해야 합니다.
-세법 답변은 본질적으로 조건부입니다. 사실관계가 일부 불명확해도 가능한 한 '요건별 조건부 결론'으로 답하고, 추가 질문(확인 모드)은 핵심 사실이 거의 없어 어떤 조건부 결론도 세울 수 없을 때만 최소한으로 사용하십시오.`;
+세법 답변은 본질적으로 조건부입니다. 사실관계가 일부 불명확해도 가능한 한 '요건별 조건부 결론'으로 답하고, 추가 질문(확인 모드)은 핵심 사실이 거의 없어 어떤 조건부 결론도 세울 수 없을 때만 최소한으로 사용하십시오.
+답변은 간결하게 작성하십시오. 핵심만 담고 같은 내용의 반복·장황한 부연을 피하며, 각 섹션은 필요한 분량만 사용하십시오.`;
 
 function textOf(content: Anthropic.Messages.ContentBlock[]): string {
   return content
@@ -142,9 +143,13 @@ export async function runTaxQuery({
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
   const priorWasClarify = !!lastAssistant?.content && /##\s*확인이 필요한 사항/.test(lastAssistant.content);
 
+  const startedAt = Date.now(); // for tool-phase vs answer-phase timing
+
   emit({ type: "status", message: "생각 중..." });
 
   async function streamFinalAnswer() {
+    const toolMs = Date.now() - startedAt; // time spent in search/get_law_text loop
+    const answerStart = Date.now();
     emit({ type: "status", message: "답변 작성 중..." });
     const sources = buildSources(collected);
 
@@ -194,7 +199,7 @@ export async function runTaxQuery({
     const stream = anthropic.messages.stream(
       {
         model: ANSWER_MODEL,
-        max_tokens: 2048,
+        max_tokens: 1024,
         system: [{ type: "text", text: ANSWER_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
       },
@@ -209,6 +214,7 @@ export async function runTaxQuery({
     }
 
     const mode = /##\s*확인이 필요한 사항/.test(finalText) ? "clarify" : "answer";
+    console.log(`[query] tools=${toolMs}ms answer=${Date.now() - answerStart}ms`);
     emit({ type: "done", citations: pickCitedSources(finalText, sources), mode });
   }
 
