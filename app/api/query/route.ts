@@ -18,16 +18,26 @@ export async function POST(req: Request) {
       async start(controller) {
         const ac = new AbortController();
         const killTimer = setTimeout(() => ac.abort(), 85_000);
-        const emit = (e: AgentEvent) => {
+        const enqueue = (s: string) => {
           try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+            controller.enqueue(encoder.encode(s));
           } catch {
             /* controller already closed */
           }
         };
+        const emit = (e: AgentEvent) => enqueue(`data: ${JSON.stringify(e)}\n\n`);
+
+        // Open the stream immediately and send a heartbeat comment every 15s.
+        // Without this, a proxy (Railway edge) can buffer or idle-timeout the SSE
+        // during a slow tool phase (law.go.kr) and cut the connection before `done`,
+        // which the client surfaces as the generic "오류가 발생했습니다" fallback.
+        enqueue(": open\n\n");
+        const heartbeat = setInterval(() => enqueue(": ping\n\n"), 15_000);
+        const startedAt = Date.now();
 
         try {
           await runTaxQuery({ query, history, emit, signal: ac.signal });
+          console.log(`[query] done in ${Date.now() - startedAt}ms`);
         } catch (e) {
           if (ac.signal.aborted) {
             emit({ type: "error", message: "법령 검색 서비스가 일시적으로 느립니다. 잠시 후 다시 시도해 주세요." });
@@ -38,6 +48,7 @@ export async function POST(req: Request) {
           }
         } finally {
           clearTimeout(killTimer);
+          clearInterval(heartbeat);
           controller.close();
         }
       },
@@ -46,8 +57,9 @@ export async function POST(req: Request) {
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no", // disable proxy buffering so SSE flushes immediately
       },
     });
   } catch (e) {
