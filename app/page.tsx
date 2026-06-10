@@ -565,6 +565,21 @@ export default function Home() {
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) el.scrollTo({ top: el.scrollHeight, behavior });
+  };
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Stick to bottom only while the user is near it. If they scroll up to read,
+    // stop yanking them down on each streamed character.
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function handleNewConversation() {
     setCurrentConvoId(null);
@@ -610,9 +625,14 @@ export default function Home() {
     });
   };
 
+  // Snap to the newest message when a turn is added (length changes). During
+  // streaming the message count is stable, so per-character follow is handled in
+  // the typer loop (scrollToBottom) and respects the user's scroll position.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamStatus]);
+    stickToBottomRef.current = true;
+    scrollToBottom("smooth");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   async function submit(query: string) {
     if (!query.trim() || loading) return;
@@ -638,111 +658,108 @@ export default function Home() {
     }
     if (convoId) saveMessage(convoId, "user", query);
 
+    // Streaming smoothing: SSE tokens fill `target`; a rAF loop reveals characters
+    // at an eased rate so the answer "types" smoothly instead of jumping per chunk.
+    const target = { text: "" };
+    let shown = 0;
+    let streamEnded = false;
+    let citations: Citation[] = [];
+    let mode: AnswerMode = "answer";
+    let rafId = 0;
+
+    const setLast = (patch: Partial<Message>) =>
+      setMessages((prev) => {
+        const msgs = [...prev];
+        const last = msgs.length - 1;
+        if (msgs[last]?.role === "assistant") msgs[last] = { ...msgs[last], ...patch };
+        return msgs;
+      });
+
+    const finishWith = (patch: Partial<Message>) => {
+      cancelAnimationFrame(rafId);
+      setLast(patch);
+      setLoading(false);
+      setStreamStatus(null);
+    };
+
+    const finalize = () => {
+      cancelAnimationFrame(rafId);
+      const finalText = target.text || "관련 법령·판례를 찾을 수 없습니다.";
+      setLast({ content: finalText, citations, mode });
+      setLoading(false);
+      setStreamStatus(null);
+      scrollToBottom("auto");
+      if (convoId) saveMessage(convoId, "assistant", finalText).then((id) => { if (id) setLast({ id }); });
+    };
+
+    const tick = () => {
+      if (shown < target.text.length) {
+        // Ease-out reveal: catch up fast on big gaps, glide on small ones.
+        shown = Math.min(target.text.length, shown + Math.max(2, Math.ceil((target.text.length - shown) / 6)));
+        setLast({ content: target.text.slice(0, shown) });
+        scrollToBottom("auto");
+      }
+      if (streamEnded && shown >= target.text.length) {
+        finalize();
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
     try {
       const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, history: historySnapshot }),
       });
-
       if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
-      let accText = "";
-      let isDone = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buf += decoder.decode(value, { stream: true });
         const parts = buf.split("\n\n");
         buf = parts.pop() ?? "";
-
         for (const part of parts) {
           const line = part.startsWith("data: ") ? part.slice(6) : part.trim();
           if (!line) continue;
           try {
             const event = JSON.parse(line);
-            if (event.type === "status") {
-              setStreamStatus(event.message);
-            } else if (event.type === "token") {
-              accText += event.text;
-              const snapshot = accText;
-              setMessages((prev) => {
-                const msgs = [...prev];
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: snapshot };
-                return msgs;
-              });
-            } else if (event.type === "done") {
-              const finalText = accText;
-              setMessages((prev) => {
-                const msgs = [...prev];
-                msgs[msgs.length - 1] = {
-                  ...msgs[msgs.length - 1],
-                  content: finalText || "관련 법령·판례를 찾을 수 없습니다.",
-                  citations: event.citations ?? [],
-                  mode: event.mode ?? "answer",
-                };
-                return msgs;
-              });
-              if (convoId) {
-                const finalContent = finalText || "관련 법령·판례를 찾을 수 없습니다.";
-                saveMessage(convoId, "assistant", finalContent).then((id) => {
-                  if (id) {
-                    setMessages((prev) => {
-                      const next = [...prev];
-                      const last = next.length - 1;
-                      if (next[last]?.role === "assistant") {
-                        next[last] = { ...next[last], id };
-                      }
-                      return next;
-                    });
-                  }
-                });
-              }
-              isDone = true;
+            if (event.type === "status") setStreamStatus(event.message);
+            else if (event.type === "token") target.text += event.text;
+            else if (event.type === "done") {
+              citations = event.citations ?? [];
+              mode = event.mode ?? "answer";
+              streamEnded = true;
             } else if (event.type === "error") {
-              setMessages((prev) => {
-                const msgs = [...prev];
-                msgs[msgs.length - 1] = { role: "assistant", content: event.message, retryQuery: query };
-                return msgs;
-              });
-              isDone = true;
+              finishWith({ content: event.message, retryQuery: query });
+              return;
             }
           } catch {}
         }
       }
 
-      if (!isDone) {
-        setMessages((prev) => {
-          const msgs = [...prev];
-          msgs[msgs.length - 1] = {
-            role: "assistant",
-            content: accText || "오류가 발생했습니다. 다시 시도해 주세요.",
-            retryQuery: accText ? undefined : query,
-          };
-          return msgs;
-        });
+      // Stream closed. No done event → finalize the partial answer if any, else error.
+      if (!streamEnded) {
+        if (!target.text) {
+          finishWith({ content: "오류가 발생했습니다. 다시 시도해 주세요.", retryQuery: query });
+          return;
+        }
+        streamEnded = true; // let the typer drain and finalize what we have
       }
     } catch (e) {
       const msg = (e as Error).message ?? "";
-      setMessages((prev) => {
-        const msgs = [...prev];
-        msgs[msgs.length - 1] = {
-          role: "assistant",
-          content: msg.includes("timeout") || msg.includes("AbortError")
-            ? "법령 검색 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요."
-            : "오류가 발생했습니다. 다시 시도해 주세요.",
-          retryQuery: query,
-        };
-        return msgs;
+      finishWith({
+        content: msg.includes("timeout") || msg.includes("AbortError")
+          ? "법령 검색 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요."
+          : "오류가 발생했습니다. 다시 시도해 주세요.",
+        retryQuery: query,
       });
-    } finally {
-      setLoading(false);
-      setStreamStatus(null);
     }
   }
 
@@ -844,7 +861,7 @@ export default function Home() {
       </header>
 
       {/* ── Messages / Empty state ──────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto min-h-0" style={{ background: C.canvasSoft }}>
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto min-h-0" style={{ background: C.canvasSoft }}>
 
         {messages.length === 0 ? (
           /* Empty state — centered, clean */
