@@ -166,8 +166,7 @@ export async function runTaxQuery({
       "[전제 사실관계, 결론이 달라질 수 있는 조건, 추가 확인 필요 사항.]",
       "",
       "━━━ 모드 B. 사실관계가 불명확하여 단정이 위험한 경우 ━━━",
-      "## 사실관계 확인 필요",
-      "[왜 추가 확인이 필요한지 1~2문장.]",
+      "[먼저 왜 추가 확인이 필요한지 1~2문장으로 설명하십시오. 이 설명에는 별도 제목(##)을 붙이지 말고 본문으로 작성하십시오.]",
       "## 확인이 필요한 사항",
       "1. [구체적 질문] (필요 시 최대 7개)",
       "## 현재까지 검토된 근거",
@@ -194,7 +193,7 @@ export async function runTaxQuery({
       }
     }
 
-    const mode = /##\s*사실관계 확인 필요/.test(finalText) ? "clarify" : "answer";
+    const mode = /##\s*확인이 필요한 사항/.test(finalText) ? "clarify" : "answer";
     emit({ type: "done", citations: pickCitedSources(finalText, sources), mode });
   }
 

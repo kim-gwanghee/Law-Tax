@@ -747,7 +747,11 @@ export default function Home() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Ignore Enter while a Korean/IME composition is in progress. Otherwise the
+    // last syllable is still being composed when Enter fires: submit+clear runs,
+    // then compositionend re-inserts that syllable into the now-empty textarea
+    // (the "마지막 한 글자 남음" bug). First Enter commits the syllable; second submits.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit(input);
     }
