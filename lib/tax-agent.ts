@@ -181,6 +181,14 @@ export async function runTaxQuery({
       "(출처 중 '대법원 <사건번호>'로 시작하는 항목은 판례입니다. 법령 조문을 1차 근거로 삼고, 판례는 법리·해석 보강용으로 [n] 인용하되, 사실관계가 사안과 다를 수 있음을 감안하십시오.)",
       sourcesText,
       "",
+      // No sources retrieved this turn — common on follow-ups where the tool model
+      // answers from conversation history without re-fetching the article. Without
+      // this guard the answer model still emits [1] out of habit, producing a
+      // dangling citation marker with no chip behind it. A legal tool must never
+      // cite without a real source, so forbid [n] when there is nothing to cite.
+      sources.length
+        ? ""
+        : "⚠ 이번 턴에는 인용 가능한 출처가 없습니다(위 [근거 자료]가 비어 있음). [1], [2] 같은 번호 인용을 절대 사용하지 마십시오. 이전 대화에서 이미 확인된 법령은 번호 없이 '소득세법 제27조'처럼 법령명·조문으로 직접 서술하고, 조문 번호·세율을 새로 지어내지 마십시오.",
       "[질문]",
       query,
       "",
