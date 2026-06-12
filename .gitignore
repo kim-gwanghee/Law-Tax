@@ -40,3 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# precedent corpus — build-time input only (scripts/embed-corpus.mjs → prec-index.json).
+# Runtime reads data/prec-index.json, never the corpus, so keep the 6MB corpus out of git.
+/data/prec-corpus.json
+
+# local design-audit artifacts + ad-hoc test scripts
+/.design-audit/

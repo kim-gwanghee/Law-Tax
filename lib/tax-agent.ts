@@ -3,6 +3,8 @@
 // event shapes the client already consumes: status | token | done | error.
 import Anthropic from "@anthropic-ai/sdk";
 import { LAW_TOOLS, callLawTool, type LawToolResult } from "./law-api";
+import { searchPrecedents } from "./prec-search";
+import { priorTurns, type HistoryMsg } from "./history";
 
 export type AgentEvent =
   | { type: "status"; message: string }
@@ -11,7 +13,6 @@ export type AgentEvent =
   | { type: "error"; message: string };
 
 type Citation = { id: number; law: string; article: string; title: string; snippet: string };
-type HistoryMsg = { role: "user" | "assistant"; content: string };
 type Emit = (e: AgentEvent) => void;
 
 const TOOL_MODEL = "claude-haiku-4-5-20251001";
@@ -21,7 +22,6 @@ const TOOL_MODEL = "claude-haiku-4-5-20251001";
 const ANSWER_MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOOL_CALLS = 5; // hard cap; lets the model fetch several relevant articles
 const MAX_LOOPS = 10;
-const MAX_HISTORY = 6;
 
 const SYSTEM_PROMPT = `당신은 세무사를 보조하는 세법·법령 질의응답 AI입니다.
 법령정보 API로 검색한 조문에만 근거하여 답변합니다.
@@ -122,10 +122,7 @@ export async function runTaxQuery({
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 });
 
   const messages: Anthropic.Messages.MessageParam[] = [
-    ...history
-      .filter((m) => m.content && m.content.trim())
-      .slice(-MAX_HISTORY)
-      .map((m) => ({ role: m.role, content: m.content })),
+    ...priorTurns(history),
     { role: "user" as const, content: query },
   ];
 
@@ -152,9 +149,24 @@ export async function runTaxQuery({
   async function streamFinalAnswer() {
     const toolMs = Date.now() - startedAt; // time spent in search/get_law_text loop
     const answerStart = Date.now();
-    emit({ type: "status", message: "답변 작성 중..." });
-    const sources = buildSources(collected);
+    const lawSources = buildSources(collected);
 
+    // Augment law articles with semantically-retrieved 대법원 판례. Graceful no-op
+    // (returns []) if the index isn't built/deployed, OPENAI_API_KEY is missing, or
+    // embedding fails — so the answer degrades to law-only instead of erroring.
+    // Shaped exactly like law sources so the existing [n] citation numbering and
+    // client rendering work unchanged; precedent heads read "대법원 <사건번호>".
+    emit({ type: "status", message: "관련 판례 검색 중..." });
+    const precHits = await searchPrecedents(query, { topK: 3, signal });
+    const precSources = precHits.map((h) => ({
+      law: "대법원",
+      article: h.사건번호,
+      title: h.사건명,
+      snippet: `[판시사항] ${h.판시사항}\n[판결요지] ${h.판결요지.slice(0, 800)}`,
+    }));
+    const sources = [...lawSources, ...precSources];
+
+    emit({ type: "status", message: "답변 작성 중..." });
     const sourcesText = sources.length
       ? sources
           .map((s, i) => {
@@ -165,7 +177,8 @@ export async function runTaxQuery({
       : "검색 결과 없음";
 
     const userMessage = [
-      "[법령 검색 결과 — 출처 번호 매김]",
+      "[근거 자료 — 출처 번호 매김]",
+      "(출처 중 '대법원 <사건번호>'로 시작하는 항목은 판례입니다. 법령 조문을 1차 근거로 삼고, 판례는 법리·해석 보강용으로 [n] 인용하되, 사실관계가 사안과 다를 수 있음을 감안하십시오.)",
       sourcesText,
       "",
       "[질문]",
@@ -203,7 +216,11 @@ export async function runTaxQuery({
         model: ANSWER_MODEL,
         max_tokens: 1024,
         system: [{ type: "text", text: ANSWER_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: userMessage }],
+        // Include the prior turns so a follow-up that only adds facts keeps the
+        // reference to the original question. Without this the answer model saw
+        // only the current query and answered the new facts in a vacuum — the
+        // "후속 질문이 안 된다" bug.
+        messages: [...priorTurns(history), { role: "user", content: userMessage }],
       },
       { signal },
     );
